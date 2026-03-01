@@ -2,14 +2,11 @@
 
 import pytest
 import os
-import sys
 import tempfile
 from openpyxl import load_workbook
 
-# Import directly to avoid platform check
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-from excel_generator import LogenExcelGenerator
-from exceptions import ExcelGenerationError
+from src.excel_generator import LogenExcelGenerator
+from src.exceptions import ExcelGenerationError
 
 
 class TestLogenExcelGenerator:

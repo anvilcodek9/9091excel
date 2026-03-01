@@ -2,12 +2,8 @@
 
 from typing import List, Dict
 from openpyxl import Workbook
-import sys
-import os
 
-# Import exceptions directly without triggering package __init__
-sys.path.insert(0, os.path.dirname(__file__))
-from exceptions import ExcelGenerationError
+from .exceptions import ExcelGenerationError
 
 
 class LogenExcelGenerator:

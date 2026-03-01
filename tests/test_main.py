@@ -15,7 +15,8 @@ class TestGenerateLogenShippingFile:
     
     def test_main_function_with_access_token_parameter(self):
         """Test main function accepts access token as parameter."""
-        with patch('src.main.NaverCommerceClient') as mock_client_class, \
+        with patch('src.main.ensure_windows_platform'), \
+             patch('src.main.NaverCommerceClient') as mock_client_class, \
              patch('src.main.OrderTransformer.transform_to_logen_format') as mock_transform, \
              patch('src.main.LogenExcelGenerator.generate_excel') as mock_excel, \
              patch('src.main.generate_logen_filename') as mock_filename:
@@ -41,7 +42,8 @@ class TestGenerateLogenShippingFile:
     
     def test_main_function_reads_from_environment_variable(self):
         """Test main function reads access token from environment variable."""
-        with patch('src.main.NaverCommerceClient') as mock_client_class, \
+        with patch('src.main.ensure_windows_platform'), \
+             patch('src.main.NaverCommerceClient') as mock_client_class, \
              patch('src.main.OrderTransformer.transform_to_logen_format') as mock_transform, \
              patch('src.main.LogenExcelGenerator.generate_excel') as mock_excel, \
              patch('src.main.generate_logen_filename') as mock_filename, \
@@ -61,18 +63,45 @@ class TestGenerateLogenShippingFile:
             
             # Verify
             mock_client_class.assert_called_once_with('env_token')
+
+    def test_main_function_auto_issues_token_with_client_id_secret(self):
+        """Test main function auto-issues token when NAVER_CLIENT_ID and NAVER_CLIENT_SECRET are set."""
+        with patch('src.main.ensure_windows_platform'), \
+             patch('src.main.NaverCommerceClient') as mock_client_class, \
+             patch('src.main.OrderTransformer.transform_to_logen_format') as mock_transform, \
+             patch('src.main.LogenExcelGenerator.generate_excel') as mock_excel, \
+             patch('src.main.generate_logen_filename') as mock_filename, \
+             patch('src.auth.get_access_token', return_value='auto_issued_token'), \
+             patch.dict(os.environ, {
+                 'NAVER_CLIENT_ID': 'test_client_id',
+                 'NAVER_CLIENT_SECRET': 'test_client_secret',
+             }, clear=True):
+            mock_client = MagicMock()
+            mock_client.fetch_orders.return_value = []
+            mock_client_class.return_value = mock_client
+            mock_transform.return_value = []
+            mock_filename.return_value = '로젠발송양식_20240115.xlsx'
+            mock_excel.return_value = '로젠발송양식_20240115.xlsx'
+
+            result = generate_logen_shipping_file()
+
+            # resolve_access_token calls get_access_token when only client_id/secret exist
+            mock_client_class.assert_called_once_with('auto_issued_token')
+            assert result == '로젠발송양식_20240115.xlsx'
     
     def test_main_function_raises_error_when_no_token(self):
         """Test main function raises ValueError when no access token provided."""
-        with patch.dict(os.environ, {}, clear=True):
+        with patch('src.main.ensure_windows_platform'), \
+             patch.dict(os.environ, {}, clear=True):
             with pytest.raises(ValueError) as exc_info:
                 generate_logen_shipping_file()
             
-            assert "Access token not provided" in str(exc_info.value)
+            assert "NAVER_ACCESS_TOKEN" in str(exc_info.value) or "액세스 토큰" in str(exc_info.value)
     
     def test_main_function_propagates_naver_api_error(self):
         """Test main function propagates NaverAPIError from API client."""
-        with patch('src.main.NaverCommerceClient') as mock_client_class:
+        with patch('src.main.ensure_windows_platform'), \
+             patch('src.main.NaverCommerceClient') as mock_client_class:
             mock_client = MagicMock()
             mock_client.fetch_orders.side_effect = NaverAPIError("API Error")
             mock_client_class.return_value = mock_client
@@ -82,7 +111,8 @@ class TestGenerateLogenShippingFile:
     
     def test_main_function_propagates_data_transform_error(self):
         """Test main function propagates DataTransformError from transformer."""
-        with patch('src.main.NaverCommerceClient') as mock_client_class, \
+        with patch('src.main.ensure_windows_platform'), \
+             patch('src.main.NaverCommerceClient') as mock_client_class, \
              patch('src.main.OrderTransformer.transform_to_logen_format') as mock_transform:
             
             mock_client = MagicMock()
@@ -96,7 +126,8 @@ class TestGenerateLogenShippingFile:
     
     def test_main_function_propagates_excel_generation_error(self):
         """Test main function propagates ExcelGenerationError from generator."""
-        with patch('src.main.NaverCommerceClient') as mock_client_class, \
+        with patch('src.main.ensure_windows_platform'), \
+             patch('src.main.NaverCommerceClient') as mock_client_class, \
              patch('src.main.OrderTransformer.transform_to_logen_format') as mock_transform, \
              patch('src.main.LogenExcelGenerator.generate_excel') as mock_excel, \
              patch('src.main.generate_logen_filename') as mock_filename:
@@ -116,14 +147,15 @@ class TestGenerateLogenShippingFile:
         """Test main function executes workflow steps in correct order."""
         call_order = []
         
-        with patch('src.main.NaverCommerceClient') as mock_client_class, \
+        with patch('src.main.ensure_windows_platform'), \
+             patch('src.main.NaverCommerceClient') as mock_client_class, \
              patch('src.main.OrderTransformer.transform_to_logen_format') as mock_transform, \
              patch('src.main.LogenExcelGenerator.generate_excel') as mock_excel, \
              patch('src.main.generate_logen_filename') as mock_filename:
             
             # Setup mocks to track call order
             mock_client = MagicMock()
-            def fetch_orders_side_effect():
+            def fetch_orders_side_effect(*args, **kwargs):
                 call_order.append('fetch_orders')
                 return [{'order_id': '123'}]
             mock_client.fetch_orders.side_effect = fetch_orders_side_effect

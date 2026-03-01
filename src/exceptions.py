@@ -1,5 +1,7 @@
 """Custom exception classes for Naver-Logen integration."""
 
+from typing import Optional
+
 
 class NaverAPIError(Exception):
     """
@@ -14,7 +16,7 @@ class NaverAPIError(Exception):
         response_body: API response body if available
     """
     
-    def __init__(self, message: str, status_code: int = None, response_body: str = None):
+    def __init__(self, message: str, status_code: Optional[int] = None, response_body: Optional[str] = None):
         self.message = message
         self.status_code = status_code
         self.response_body = response_body
@@ -43,7 +45,7 @@ class DataTransformError(Exception):
         missing_field: Name of the missing or invalid field
     """
     
-    def __init__(self, message: str, order_id: str = None, missing_field: str = None):
+    def __init__(self, message: str, order_id: Optional[str] = None, missing_field: Optional[str] = None):
         self.message = message
         self.order_id = order_id
         self.missing_field = missing_field
@@ -71,7 +73,7 @@ class ExcelGenerationError(Exception):
         underlying_error: The original exception that caused this error
     """
     
-    def __init__(self, message: str, file_path: str = None, underlying_error: Exception = None):
+    def __init__(self, message: str, file_path: Optional[str] = None, underlying_error: Optional[Exception] = None):
         self.message = message
         self.file_path = file_path
         self.underlying_error = underlying_error
