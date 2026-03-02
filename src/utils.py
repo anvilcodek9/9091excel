@@ -4,19 +4,17 @@ from datetime import datetime
 from typing import List, Dict, Optional
 from openpyxl import load_workbook
 
-# 로젠양식 헤더 (15열) - excel_generator와 동일
+# 로젠양식 헤더 (A~O 15열) - excel_generator와 동일
 LOGEN_EXCEL_HEADERS = [
     "수하인명",
     "운송장번호(로젠택배)",
     "수하인주소1",
-    "수하인주소2",
-    "수하인전화번호",
+    "", "",  # D, E 빈칸
     "수하인핸드폰번호",
     "택배수량",
-    "택배운임",
-    "운임구분",
+    "", "",  # H, I 빈칸
     "품목명",
-    "",
+    "",  # K 빈칸
     "배송메세지 (도착일)",
     "보내는 분",
     "연락처",
@@ -68,7 +66,7 @@ def read_logen_excel(file_path: str) -> List[Dict[str, str]]:
     """
     Read and verify Logen shipping Excel file.
     
-    Reads an Excel file in Logen format (로젠양식: 주소1,2로분리),
+    Reads an Excel file in Logen format (로젠양식 A~O 15열),
     verifies the header row matches the expected column order,
     and parses data rows starting from row 2.
     
@@ -103,26 +101,21 @@ def read_logen_excel(file_path: str) -> List[Dict[str, str]]:
             f"but got {actual_headers}"
         )
     
-    # Parse data rows starting from row 2
+    # Parse data rows starting from row 2 (A~O 15열: C주소, F수하인핸드폰, J품목명, L배송메세지)
     data = []
     for row in sheet.iter_rows(min_row=2, values_only=True):
-        # Skip empty rows (row needs at least 10 columns for valid data)
         row_list = list(row) if row else []
-        if len(row_list) < 10 or not any(
-            v for v in (row_list[:4] + row_list[8:10]) if v is not None
-        ):
+        key_cols = [row_list[0], row_list[2]] if len(row_list) > 2 else [row_list[0]] if row_list else []
+        if len(row_list) < 10 or not any(v for v in key_cols if v is not None):
             continue
         
-        address1 = row_list[2] if len(row_list) > 2 and row_list[2] is not None else ""
-        address2 = row_list[3] if len(row_list) > 3 and row_list[3] is not None else ""
-        full_address = f"{address1} {address2}".strip() if (address1 or address2) else ""
-        
+        full_address = row_list[2] if len(row_list) > 2 and row_list[2] is not None else ""
         row_data = {
             "receiver_name": row_list[0] if len(row_list) > 0 and row_list[0] is not None else "",
-            "address1": address1,
-            "address2": address2,
+            "address1": full_address,
+            "address2": "",
             "full_address": full_address,
-            "receiver_tel": row_list[4] if len(row_list) > 4 and row_list[4] is not None else "",
+            "receiver_tel": row_list[5] if len(row_list) > 5 and row_list[5] is not None else "",
             "product_name": row_list[9] if len(row_list) > 9 and row_list[9] is not None else "",
             "delivery_memo": row_list[11] if len(row_list) > 11 and row_list[11] is not None else "",
         }

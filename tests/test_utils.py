@@ -63,23 +63,23 @@ def test_generate_logen_filename_different_dates():
 
 
 def test_read_logen_excel_with_valid_file(tmp_path):
-    """Test reading a valid Logen Excel file (로젠양식 15열)."""
+    """Test reading a valid Logen Excel file (로젠양식 A~O 15열)."""
     from openpyxl import Workbook
     from utils import read_logen_excel
     
-    # Create a test Excel file (로젠양식)
+    # Create a test Excel file (로젠양식 A~O 15열)
     wb = Workbook()
     ws = wb.active
     headers = [
-        "수하인명", "운송장번호(로젠택배)", "수하인주소1", "수하인주소2",
-        "수하인전화번호", "수하인핸드폰번호", "택배수량", "택배운임", "운임구분",
-        "품목명", "", "배송메세지 (도착일)", "보내는 분", "연락처", "주소"
+        "수하인명", "운송장번호(로젠택배)", "수하인주소1", "", "",
+        "수하인핸드폰번호", "택배수량", "", "", "품목명", "",
+        "배송메세지 (도착일)", "보내는 분", "연락처", "주소"
     ]
     ws.append(headers)
     
-    # Add data rows (15 columns)
-    ws.append(["홍길동", "", "서울시 강남구 테헤란로", "123", "010-1234-5678", "010-1234-5678", 1, "", "", "테스트 상품", "", "문 앞에 놓아주세요", "", "", ""])
-    ws.append(["김철수", "", "부산시 해운대구 해운대로", "456", "010-9876-5432", "010-9876-5432", 1, "", "", "샘플 제품", "", "", "", "", ""])
+    # Add data rows (15 columns: A~O)
+    ws.append(["홍길동", "", "서울시 강남구 테헤란로 123", "", "", "010-1234-5678", 1, "", "", "테스트 상품", "", "문 앞에 놓아주세요", "", "", ""])
+    ws.append(["김철수", "", "부산시 해운대구 해운대로 456", "", "", "010-9876-5432", 1, "", "", "샘플 제품", "", "", "", "", ""])
     
     test_file = tmp_path / "test_logen.xlsx"
     wb.save(test_file)
@@ -88,16 +88,16 @@ def test_read_logen_excel_with_valid_file(tmp_path):
     
     assert len(data) == 2
     assert data[0]["receiver_name"] == "홍길동"
-    assert data[0]["address1"] == "서울시 강남구 테헤란로"
-    assert data[0]["address2"] == "123"
+    assert data[0]["address1"] == "서울시 강남구 테헤란로 123"
+    assert data[0]["address2"] == ""
     assert data[0]["full_address"] == "서울시 강남구 테헤란로 123"
     assert data[0]["receiver_tel"] == "010-1234-5678"
     assert data[0]["product_name"] == "테스트 상품"
     assert data[0]["delivery_memo"] == "문 앞에 놓아주세요"
     
     assert data[1]["receiver_name"] == "김철수"
-    assert data[1]["address1"] == "부산시 해운대구 해운대로"
-    assert data[1]["address2"] == "456"
+    assert data[1]["address1"] == "부산시 해운대구 해운대로 456"
+    assert data[1]["address2"] == ""
     assert data[1]["full_address"] == "부산시 해운대구 해운대로 456"
     assert data[1]["receiver_tel"] == "010-9876-5432"
     assert data[1]["product_name"] == "샘플 제품"
@@ -105,16 +105,16 @@ def test_read_logen_excel_with_valid_file(tmp_path):
 
 
 def test_read_logen_excel_header_only(tmp_path):
-    """Test reading Excel file with only header row (로젠양식)."""
+    """Test reading Excel file with only header row (로젠양식 A~O 15열)."""
     from openpyxl import Workbook
     from utils import read_logen_excel
     
     wb = Workbook()
     ws = wb.active
     headers = [
-        "수하인명", "운송장번호(로젠택배)", "수하인주소1", "수하인주소2",
-        "수하인전화번호", "수하인핸드폰번호", "택배수량", "택배운임", "운임구분",
-        "품목명", "", "배송메세지 (도착일)", "보내는 분", "연락처", "주소"
+        "수하인명", "운송장번호(로젠택배)", "수하인주소1", "", "",
+        "수하인핸드폰번호", "택배수량", "", "", "품목명", "",
+        "배송메세지 (도착일)", "보내는 분", "연락처", "주소"
     ]
     ws.append(headers)
     
@@ -143,21 +143,21 @@ def test_read_logen_excel_invalid_header(tmp_path):
 
 
 def test_read_logen_excel_with_empty_rows(tmp_path):
-    """Test reading Excel file with empty rows (로젠양식)."""
+    """Test reading Excel file with empty rows (로젠양식 A~O 15열)."""
     from openpyxl import Workbook
     from utils import read_logen_excel
     
     wb = Workbook()
     ws = wb.active
     headers = [
-        "수하인명", "운송장번호(로젠택배)", "수하인주소1", "수하인주소2",
-        "수하인전화번호", "수하인핸드폰번호", "택배수량", "택배운임", "운임구분",
-        "품목명", "", "배송메세지 (도착일)", "보내는 분", "연락처", "주소"
+        "수하인명", "운송장번호(로젠택배)", "수하인주소1", "", "",
+        "수하인핸드폰번호", "택배수량", "", "", "품목명", "",
+        "배송메세지 (도착일)", "보내는 분", "연락처", "주소"
     ]
     ws.append(headers)
-    ws.append(["홍길동", "", "서울시", "", "010-1234-5678", "", 1, "", "", "상품", "", "메모", "", "", ""])
+    ws.append(["홍길동", "", "서울시", "", "", "010-1234-5678", 1, "", "", "상품", "", "메모", "", "", ""])
     ws.append([None] * 15)
-    ws.append(["김철수", "", "부산시", "", "010-9876-5432", "", 1, "", "", "제품", "", "", "", "", ""])
+    ws.append(["김철수", "", "부산시", "", "", "010-9876-5432", 1, "", "", "제품", "", "", "", "", ""])
     
     test_file = tmp_path / "test_empty_rows.xlsx"
     wb.save(test_file)
@@ -169,19 +169,19 @@ def test_read_logen_excel_with_empty_rows(tmp_path):
 
 
 def test_read_logen_excel_with_none_values(tmp_path):
-    """Test reading Excel file with None values in cells (로젠양식)."""
+    """Test reading Excel file with None values in cells (로젠양식 A~O 15열)."""
     from openpyxl import Workbook
     from utils import read_logen_excel
     
     wb = Workbook()
     ws = wb.active
     headers = [
-        "수하인명", "운송장번호(로젠택배)", "수하인주소1", "수하인주소2",
-        "수하인전화번호", "수하인핸드폰번호", "택배수량", "택배운임", "운임구분",
-        "품목명", "", "배송메세지 (도착일)", "보내는 분", "연락처", "주소"
+        "수하인명", "운송장번호(로젠택배)", "수하인주소1", "", "",
+        "수하인핸드폰번호", "택배수량", "", "", "품목명", "",
+        "배송메세지 (도착일)", "보내는 분", "연락처", "주소"
     ]
     ws.append(headers)
-    row = ["홍길동", "", "서울시", "", None, "", 1, "", "", "상품", "", None, "", "", ""]
+    row = ["홍길동", "", "서울시", "", "", None, 1, "", "", "상품", "", None, "", "", ""]
     ws.append(row)
     
     test_file = tmp_path / "test_none_values.xlsx"

@@ -8,7 +8,7 @@ import sys
 import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Callable, Any
 
 # exe 실행 시 작업 디렉터리를 exe 위치로 고정 (생성 파일이 exe 옆에 저장되도록)
@@ -175,10 +175,20 @@ def run_gui() -> None:
 
     # ---- 상태/결과 ----
     status_var = tk.StringVar(value="대기 중입니다. 조회 기간을 선택한 뒤 [엑셀 생성]을 누르세요.")
-    status_label = ttk.Label(main, textvariable=status_var, wraplength=400)
+    status_label = ttk.Label(main, textvariable=status_var, wraplength=400, justify=tk.LEFT)
     status_label.pack(anchor=tk.W, pady=(12, 0))
 
-    open_folder_btn = ttk.Button(main, text="저장 폴더 열기", command=lambda: os.startfile(app_dir))
+    def open_save_folder():
+        """엑셀 저장 폴더(프로그램 위치)를 파일 탐색기로 연다."""
+        try:
+            if not os.path.isdir(app_dir):
+                messagebox.showerror("폴더 없음", f"저장 폴더를 찾을 수 없습니다.\n\n{app_dir}")
+                return
+            os.startfile(app_dir)
+        except OSError as e:
+            messagebox.showerror("폴더 열기 오류", f"저장 폴더를 열 수 없습니다.\n\n{app_dir}\n\n{e}")
+
+    open_folder_btn = ttk.Button(main, text="저장 폴더 열기", command=open_save_folder)
     open_folder_btn.pack(anchor=tk.W, pady=(6, 0))
 
     def apply_stored_credentials():
@@ -213,11 +223,13 @@ def run_gui() -> None:
                 if not from_str or not to_str:
                     messagebox.showerror("입력 오류", "시작일과 종료일을 입력해 주세요. (예: 2024-03-01)")
                     return
-                from_iso = from_str + "T00:00:00"
-                to_iso = to_str + "T23:59:59"
-                # 날짜 유효성
-                datetime.fromisoformat(from_iso)
-                datetime.fromisoformat(to_iso.replace("T23:59:59", "T00:00:00"))
+                # API는 유효한 ISO-8601(시간대 포함)을 요구함. KST(+09:00) + 밀리초로 통일
+                kst = timezone(timedelta(hours=9))
+                start_dt = datetime.strptime(from_str, "%Y-%m-%d").replace(tzinfo=kst)
+                end_dt = datetime.strptime(to_str, "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999000, tzinfo=kst)
+                from_iso = start_dt.isoformat(timespec="milliseconds")
+                to_iso = end_dt.isoformat(timespec="milliseconds")
+                # 날짜 유효성 (이미 strptime으로 검증됨)
             except ValueError as e:
                 messagebox.showerror("입력 오류", "날짜 형식이 올바르지 않습니다. YYYY-MM-DD (예: 2024-03-01)")
                 return
@@ -239,7 +251,8 @@ def run_gui() -> None:
 
         def on_success(path: str):
             abspath = os.path.abspath(path)
-            status_var.set(f"완료: {os.path.basename(abspath)}\n경로: {abspath}")
+            # 상태 영역은 짧게 표시하고, 전체 경로는 알림창으로 보여준다.
+            status_var.set(f"완료: {os.path.basename(abspath)}\n엑셀 파일이 생성되었습니다. [저장 폴더 열기] 버튼으로 폴더를 확인하세요.")
             messagebox.showinfo("완료", f"엑셀 파일이 생성되었습니다.\n\n{abspath}")
 
         def on_error(exc: Exception):
@@ -262,7 +275,7 @@ def run_gui() -> None:
 
     # 창 중앙 배치
     root.update_idletasks()
-    w, h = 440, 420
+    w, h = 480, 460
     x = (root.winfo_screenwidth() // 2) - (w // 2)
     y = (root.winfo_screenheight() // 2) - (h // 2)
     root.geometry(f"{w}x{h}+{x}+{y}")

@@ -44,6 +44,7 @@ class NaverCommerceClient:
         last_hours: int = 24,
         from_iso: Optional[str] = None,
         to_iso: Optional[str] = None,
+        _split_long_range: bool = True,
     ) -> List[Dict]:
         """
         Fetch orders from Naver Commerce API with specified filters.
@@ -59,6 +60,7 @@ class NaverCommerceClient:
             last_hours: 조회 기간(시간). from_iso/to_iso 미지정 시 사용. API 제한으로 최대 23.
             from_iso: 테스트용. 조회 시작 시각 ISO-8601 (지정 시 last_hours 무시)
             to_iso: 테스트용. 조회 종료 시각 ISO-8601 (from_iso와 함께 사용, 최대 24시간 차이)
+            _split_long_range: 내부용 플래그. True일 때 from/to 구간이 24시간을 초과하면 자동으로 23시간 단위로 쪼개어 여러 번 조회합니다.
         
         Returns:
             List of order dictionaries from the API response
@@ -67,6 +69,45 @@ class NaverCommerceClient:
             NaverAPIError: When API request fails due to authentication,
                           network errors, or server errors after all retries
         """
+        # 긴 기간(>24시간)을 사용자 편의상 자동으로 23시간 단위로 나누어 조회
+        if from_iso and to_iso and _split_long_range:
+            try:
+                # 'Z' → '+00:00' 으로 치환하여 표준 ISO-8601로 파싱
+                start_dt = datetime.fromisoformat(from_iso.replace("Z", "+00:00"))
+                end_dt = datetime.fromisoformat(to_iso.replace("Z", "+00:00"))
+            except (ValueError, TypeError):
+                # 형식이 잘못된 경우에는 기존 로직에 맡기고, 서버에서 에러를 반환하도록 둔다.
+                start_dt = end_dt = None
+
+            if start_dt and end_dt and end_dt > start_dt:
+                total_span = end_dt - start_dt
+                max_api_span = timedelta(hours=24)
+                # 네이버 API 제약: from~to 최대 24시간.
+                # 사용자가 더 긴 기간을 선택하면 23시간 단위로 자동 분할 조회.
+                if total_span > max_api_span:
+                    all_orders: List[Dict] = []
+                    chunk = timedelta(hours=23)
+                    epsilon = timedelta(milliseconds=1)
+                    current_start = start_dt
+
+                    while current_start < end_dt:
+                        current_end = min(current_start + chunk, end_dt)
+                        sub_from = current_start.isoformat(timespec="milliseconds")
+                        sub_to = current_end.isoformat(timespec="milliseconds")
+                        partial = self.fetch_orders(
+                            payment_status=payment_status,
+                            shipping_status=shipping_status,
+                            last_hours=last_hours,
+                            from_iso=sub_from,
+                            to_iso=sub_to,
+                            _split_long_range=False,
+                        )
+                        all_orders.extend(partial)
+                        # 다음 구간은 1ms 뒤부터 시작하여 중복 최소화
+                        current_start = current_end + epsilon
+
+                    return all_orders
+
         # 주문 조회 API 경로 업데이트:
         # (구) /v1/product-orders/query -> (신) /v1/pay-order/seller/product-orders
         url = f"{self.base_url}/pay-order/seller/product-orders"

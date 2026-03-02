@@ -38,7 +38,7 @@ class TestLogenExcelGenerator:
                 os.remove(output_path)
     
     def test_generate_excel_header_row(self):
-        """Test that the Excel file has the correct header row (로젠양식 15열)."""
+        """Test that the Excel file has the correct header row (로젠양식 A~O 15열)."""
         data = []
         
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
@@ -51,9 +51,9 @@ class TestLogenExcelGenerator:
             ws = wb.active
             
             expected_headers = [
-                "수하인명", "운송장번호(로젠택배)", "수하인주소1", "수하인주소2",
-                "수하인전화번호", "수하인핸드폰번호", "택배수량", "택배운임", "운임구분",
-                "품목명", "", "배송메세지 (도착일)", "보내는 분", "연락처", "주소"
+                "수하인명", "운송장번호(로젠택배)", "수하인주소1", "", "",
+                "수하인핸드폰번호", "택배수량", "", "", "품목명", "",
+                "배송메세지 (도착일)", "보내는 분", "연락처", "주소"
             ]
             actual_headers = [(c.value if c.value is not None else "") for c in ws[1]]
             
@@ -87,14 +87,13 @@ class TestLogenExcelGenerator:
             # Check row count (1 header + 1 data row)
             assert ws.max_row == 2
             
-            # Check data in row 2 (로젠양식 열 순서)
-            assert ws.cell(2, 1).value == "김철수"  # 수하인명
-            assert ws.cell(2, 2).value in (None, "")  # 운송장번호 (빈칸)
-            assert ws.cell(2, 3).value == "부산시 해운대구 센텀로"  # 수하인주소1
-            assert ws.cell(2, 4).value == "456"  # 수하인주소2
-            assert ws.cell(2, 5).value == "010-9876-5432"  # 수하인전화번호
-            assert ws.cell(2, 10).value == "노트북"  # 품목명
-            assert ws.cell(2, 12).value == "배송 전 연락주세요"  # 배송메세지
+            # Check data in row 2 (A~O: A명 B운송장 C주소 D,E빈 F핸드폰 G수량 H,I빈 J품목 K빈 L배송메세지)
+            assert ws.cell(2, 1).value == "김철수"  # A 수하인명
+            assert ws.cell(2, 2).value in (None, "")  # B 운송장번호
+            assert ws.cell(2, 3).value == "부산시 해운대구 센텀로 456"  # C 수하인주소1
+            assert ws.cell(2, 6).value == "010-9876-5432"  # F 수하인핸드폰번호
+            assert ws.cell(2, 10).value == "노트북"  # J 품목명
+            assert ws.cell(2, 12).value == "배송 전 연락주세요"  # L 배송메세지
         finally:
             if os.path.exists(output_path):
                 os.remove(output_path)
@@ -140,7 +139,7 @@ class TestLogenExcelGenerator:
             # Check row count (1 header + 3 data rows)
             assert ws.max_row == 4
             
-            # Check first data row (품목명=열10)
+            # Check first data row (품목명=J열=10)
             assert ws.cell(2, 1).value == "이영희"
             assert ws.cell(2, 10).value == "키보드"
             
@@ -196,7 +195,7 @@ class TestLogenExcelGenerator:
             wb = load_workbook(output_path)
             ws = wb.active
             
-            # Check that delivery_memo (열12) is None or empty
+            # Check that delivery_memo (L열=12) is None or empty
             assert ws.cell(2, 12).value is None or ws.cell(2, 12).value == ""
         finally:
             if os.path.exists(output_path):
@@ -223,10 +222,10 @@ class TestLogenExcelGenerator:
             
             # full_address fallback: address1 gets full, address2 empty
             assert ws.cell(2, 1).value == "강민지"
-            assert ws.cell(2, 3).value == "울산시 남구 삼산로 555"  # address1
-            assert ws.cell(2, 4).value is None or ws.cell(2, 4).value == ""  # address2
-            assert ws.cell(2, 5).value is None or ws.cell(2, 5).value == ""
-            assert ws.cell(2, 10).value is None or ws.cell(2, 10).value == ""
+            assert ws.cell(2, 3).value == "울산시 남구 삼산로 555"  # C 수하인주소1
+            assert ws.cell(2, 6).value is None or ws.cell(2, 6).value == ""  # F 수하인핸드폰번호
+            assert ws.cell(2, 7).value == 1  # G 택배수량
+            assert ws.cell(2, 10).value is None or ws.cell(2, 10).value == ""  # J 품목명
         finally:
             if os.path.exists(output_path):
                 os.remove(output_path)
@@ -275,13 +274,12 @@ class TestLogenExcelGenerator:
             wb = load_workbook(output_path)
             ws = wb.active
             
-            # Check column order (로젠양식 15열)
-            assert ws.cell(2, 1).value == "A"   # 수하인명
-            assert ws.cell(2, 3).value == "B1"  # 수하인주소1
-            assert ws.cell(2, 4).value == "B2"  # 수하인주소2
-            assert ws.cell(2, 5).value == "C"   # 수하인전화번호
-            assert ws.cell(2, 10).value == "D"  # 품목명
-            assert ws.cell(2, 12).value == "E"  # 배송메세지
+            # Check column order (A~O 15열)
+            assert ws.cell(2, 1).value == "A"      # A 수하인명
+            assert ws.cell(2, 3).value == "B1 B2"  # C 수하인주소1
+            assert ws.cell(2, 6).value == "C"      # F 수하인핸드폰번호
+            assert ws.cell(2, 10).value == "D"     # J 품목명
+            assert ws.cell(2, 12).value == "E"     # L 배송메세지
         finally:
             if os.path.exists(output_path):
                 os.remove(output_path)
