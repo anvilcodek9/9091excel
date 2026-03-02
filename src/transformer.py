@@ -66,9 +66,11 @@ class OrderTransformer:
                         missing_field=field_name
                     )
             
-            # Transform to Logen format
+            # Transform to Logen format (로젠양식: 주소1, 주소2 분리)
             transformed_order = {
                 'receiver_name': order['receiverName'],
+                'address1': order['baseAddress'],
+                'address2': order['detailedAddress'],
                 'full_address': order['baseAddress'] + ' ' + order['detailedAddress'],
                 'receiver_tel': order['receiverTel1'],
                 'product_name': order['productName'],

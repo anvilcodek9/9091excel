@@ -80,6 +80,39 @@ file_path = generate_logen_shipping_file(access_token=access_token)
 print(f"Excel file generated: {file_path}")
 ```
 
+### 기간 설정 (조회 기간에 따라 엑셀 생성)
+
+프로그램에서 **조회 기간**을 지정하면, 해당 기간 주문만 조회하고 **생성되는 엑셀 파일명에 기간이 반영**됩니다.
+
+**방법 1: 코드에서 기간 인자로 지정**
+
+```python
+from src.main import generate_logen_shipping_file
+
+# 특정 구간 조회 (네이버 API 제한: 최대 24시간 구간)
+# 생성 파일명 예: 로젠발송양식_20240301_20240302.xlsx
+file_path = generate_logen_shipping_file(
+    from_iso="2024-03-01T00:00:00",
+    to_iso="2024-03-02T00:00:00",
+)
+
+# 최근 N시간 기준 조회 (기본 24시간)
+# 생성 파일명: 로젠발송양식_YYYYMMDD.xlsx (오늘 날짜)
+file_path = generate_logen_shipping_file(last_hours=12)
+```
+
+**방법 2: exe 실행 시 명령줄 인자**
+
+```cmd
+LogenExcel.exe --from "2024-03-01T00:00:00" --to "2024-03-02T00:00:00"
+LogenExcel.exe --hours 12
+```
+
+**방법 3: 환경 변수** (기존과 동일)
+
+- `NAVER_ORDER_FROM`, `NAVER_ORDER_TO`: ISO-8601 시각
+- `NAVER_ORDER_LAST_HOURS`: 최근 N시간 (기본 24)
+
 ### Error Handling
 
 ```python
@@ -129,16 +162,25 @@ pyinstaller logen_excel.spec
    ```cmd
    LogenExcel.exe
    ```
+   기간을 지정하려면:
+   ```cmd
+   LogenExcel.exe --from "2024-03-01T00:00:00" --to "2024-03-02T00:00:00"
+   LogenExcel.exe --hours 12
+   ```
 
 3. **결과**  
-   성공 시 콘솔에 생성된 Excel 파일 경로가 출력되고, exe가 있는 디렉터리(또는 작업 디렉터리)에 `로젠발송양식_YYYYMMDD.xlsx` 파일이 생성됩니다.  
+   성공 시 콘솔에 생성된 Excel 파일 경로가 출력됩니다.  
+   - 기간을 지정한 경우: `로젠발송양식_YYYYMMDD_YYYYMMDD.xlsx` (시작일_종료일)  
+   - 미지정 시: `로젠발송양식_YYYYMMDD.xlsx` (오늘 날짜)  
    토큰 미설정·API 오류 등이 있으면 콘솔에 오류 메시지가 출력됩니다.
 
 ## Output
 
 The system generates an Excel file with the following format:
 
-**Filename:** `로젠발송양식_YYYYMMDD.xlsx` (where YYYYMMDD is the current date)
+**Filename:**  
+- 기간 지정 시: `로젠발송양식_YYYYMMDD_YYYYMMDD.xlsx` (조회 시작일_종료일)  
+- 미지정 시: `로젠발송양식_YYYYMMDD.xlsx` (현재 날짜)
 
 **Columns:**
 - Column A: 받는사람 (Receiver Name)

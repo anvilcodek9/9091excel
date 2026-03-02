@@ -12,19 +12,27 @@ from .exceptions import NaverAPIError, DataTransformError, ExcelGenerationError
 from .platform_check import ensure_windows_platform
 
 
-def generate_logen_shipping_file(access_token: Optional[str] = None) -> str:
+def generate_logen_shipping_file(
+    access_token: Optional[str] = None,
+    from_iso: Optional[str] = None,
+    to_iso: Optional[str] = None,
+    last_hours: Optional[int] = None,
+) -> str:
     """
     Fetches orders from Naver Smart Store and generates Logen shipping Excel file.
     
     This function orchestrates the entire workflow:
     1. Obtains access token (parameter → NAVER_ACCESS_TOKEN → NAVER_CLIENT_ID+NAVER_CLIENT_SECRET 자동 발급)
-    2. Fetches orders from Naver Commerce API
+    2. Fetches orders from Naver Commerce API (지정한 기간 기준)
     3. Transforms order data to Logen format
-    4. Generates Excel file with current date in filename
+    4. Generates Excel file; 파일명에 조회 기간이 반영됨 (기간 지정 시)
     
     Args:
         access_token: OAuth2 access token for Naver Commerce API.
                      If not provided, uses NAVER_ACCESS_TOKEN, or auto-issues via NAVER_CLIENT_ID + NAVER_CLIENT_SECRET.
+        from_iso: 조회 시작 시각 ISO-8601. 지정 시 to_iso와 함께 사용 (네이버 API는 최대 24시간 구간).
+        to_iso: 조회 종료 시각 ISO-8601. from_iso와 함께 사용.
+        last_hours: 조회 기간(시간). from_iso/to_iso 미지정 시 사용. 기본 24, 최대 23.
         
     Returns:
         str: Path to generated Excel file
@@ -48,18 +56,21 @@ def generate_logen_shipping_file(access_token: Optional[str] = None) -> str:
     client = NaverCommerceClient(access_token)
     print(access_token)
     
-    # 조회 기간(시간). 환경 변수 NAVER_ORDER_LAST_HOURS 없으면 기본 24시간. (네이버 API 제한으로 최대 24시간)
-    last_hours = 24
-    try:
-        env_hours = os.environ.get("NAVER_ORDER_LAST_HOURS")
-        if env_hours is not None and env_hours != "":
-            last_hours = int(env_hours)
-    except ValueError:
+    # 조회 기간: 인자 우선, 없으면 환경 변수, 최종 기본값 24시간
+    if last_hours is None:
         last_hours = 24
+        try:
+            env_hours = os.environ.get("NAVER_ORDER_LAST_HOURS")
+            if env_hours is not None and env_hours != "":
+                last_hours = int(env_hours)
+        except ValueError:
+            last_hours = 24
 
-    # 조회 구간: NAVER_ORDER_FROM/TO 미설정 시 최신 23시간 내(api_client에서 last_hours 사용)
-    from_iso = os.environ.get("NAVER_ORDER_FROM", "").strip() or None
-    to_iso = os.environ.get("NAVER_ORDER_TO", "").strip() or None
+    # 조회 구간: 인자로 from/to 지정 시 그대로 사용, 없으면 환경 변수
+    if from_iso is None:
+        from_iso = os.environ.get("NAVER_ORDER_FROM", "").strip() or None
+    if to_iso is None:
+        to_iso = os.environ.get("NAVER_ORDER_TO", "").strip() or None
     # 배송상태: NAVER_INCLUDE_ALL_SHIPPING=1 이면 전체, 아니면 배송준비중(READY)만
     shipping_status = "READY"
     if os.environ.get("NAVER_INCLUDE_ALL_SHIPPING", "").strip().upper() in ("1", "TRUE", "YES"):
@@ -77,8 +88,8 @@ def generate_logen_shipping_file(access_token: Optional[str] = None) -> str:
     # Call OrderTransformer.transform_to_logen_format to transform data
     transformed_orders = OrderTransformer.transform_to_logen_format(orders)
     
-    # Generate output filename using date formatting utility
-    filename = generate_logen_filename()
+    # Generate output filename: 지정한 기간이 있으면 파일명에 반영
+    filename = generate_logen_filename(from_iso=from_iso, to_iso=to_iso)
     
     # Call LogenExcelGenerator.generate_excel to create Excel file
     output_path = LogenExcelGenerator.generate_excel(transformed_orders, filename)

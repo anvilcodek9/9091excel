@@ -1,7 +1,9 @@
 """
 exe 실행용 엔트리 포인트.
 이 파일을 PyInstaller로 패키징하여 단일 exe로 배포합니다.
+기간 지정: --from "2024-03-01T00:00:00" --to "2024-03-02T00:00:00" 또는 --hours 12
 """
+import argparse
 import sys
 
 # PyInstaller 번들에서 src 패키지 인식
@@ -19,8 +21,18 @@ def main():
     from src.main import generate_logen_shipping_file
     from src.exceptions import NaverAPIError, DataTransformError, ExcelGenerationError
 
+    parser = argparse.ArgumentParser(description="네이버 스마트스토어 주문 → 로젠 발송 엑셀 생성")
+    parser.add_argument("--from", dest="from_iso", metavar="ISO", help="조회 시작 시각 (ISO-8601, 예: 2024-03-01T00:00:00)")
+    parser.add_argument("--to", dest="to_iso", metavar="ISO", help="조회 종료 시각 (ISO-8601). --from과 함께 사용, 최대 24시간 구간")
+    parser.add_argument("--hours", type=int, metavar="N", help="최근 N시간 기준 조회 (--from/--to 미지정 시 사용, 기본 24)")
+    args = parser.parse_args()
+
     try:
-        path = generate_logen_shipping_file()
+        path = generate_logen_shipping_file(
+            from_iso=args.from_iso or None,
+            to_iso=args.to_iso or None,
+            last_hours=args.hours,
+        )
         print(f"생성 완료: {path}")
         return 0
     except ValueError as e:

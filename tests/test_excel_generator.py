@@ -17,7 +17,8 @@ class TestLogenExcelGenerator:
         data = [
             {
                 "receiver_name": "홍길동",
-                "full_address": "서울시 강남구 테헤란로 123",
+                "address1": "서울시 강남구 테헤란로",
+                "address2": "123",
                 "receiver_tel": "010-1234-5678",
                 "product_name": "테스트 상품",
                 "delivery_memo": "문 앞에 놓아주세요"
@@ -37,7 +38,7 @@ class TestLogenExcelGenerator:
                 os.remove(output_path)
     
     def test_generate_excel_header_row(self):
-        """Test that the Excel file has the correct header row."""
+        """Test that the Excel file has the correct header row (로젠양식 15열)."""
         data = []
         
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
@@ -49,8 +50,12 @@ class TestLogenExcelGenerator:
             wb = load_workbook(output_path)
             ws = wb.active
             
-            expected_headers = ["받는사람", "주소", "전화번호", "상품명", "배송메모"]
-            actual_headers = [cell.value for cell in ws[1]]
+            expected_headers = [
+                "수하인명", "운송장번호(로젠택배)", "수하인주소1", "수하인주소2",
+                "수하인전화번호", "수하인핸드폰번호", "택배수량", "택배운임", "운임구분",
+                "품목명", "", "배송메세지 (도착일)", "보내는 분", "연락처", "주소"
+            ]
+            actual_headers = [(c.value if c.value is not None else "") for c in ws[1]]
             
             assert actual_headers == expected_headers
         finally:
@@ -58,11 +63,12 @@ class TestLogenExcelGenerator:
                 os.remove(output_path)
     
     def test_generate_excel_single_order(self):
-        """Test that a single order is correctly written to Excel."""
+        """Test that a single order is correctly written to Excel (로젠양식)."""
         data = [
             {
                 "receiver_name": "김철수",
-                "full_address": "부산시 해운대구 센텀로 456",
+                "address1": "부산시 해운대구 센텀로",
+                "address2": "456",
                 "receiver_tel": "010-9876-5432",
                 "product_name": "노트북",
                 "delivery_memo": "배송 전 연락주세요"
@@ -81,36 +87,41 @@ class TestLogenExcelGenerator:
             # Check row count (1 header + 1 data row)
             assert ws.max_row == 2
             
-            # Check data in row 2
-            assert ws.cell(2, 1).value == "김철수"
-            assert ws.cell(2, 2).value == "부산시 해운대구 센텀로 456"
-            assert ws.cell(2, 3).value == "010-9876-5432"
-            assert ws.cell(2, 4).value == "노트북"
-            assert ws.cell(2, 5).value == "배송 전 연락주세요"
+            # Check data in row 2 (로젠양식 열 순서)
+            assert ws.cell(2, 1).value == "김철수"  # 수하인명
+            assert ws.cell(2, 2).value in (None, "")  # 운송장번호 (빈칸)
+            assert ws.cell(2, 3).value == "부산시 해운대구 센텀로"  # 수하인주소1
+            assert ws.cell(2, 4).value == "456"  # 수하인주소2
+            assert ws.cell(2, 5).value == "010-9876-5432"  # 수하인전화번호
+            assert ws.cell(2, 10).value == "노트북"  # 품목명
+            assert ws.cell(2, 12).value == "배송 전 연락주세요"  # 배송메세지
         finally:
             if os.path.exists(output_path):
                 os.remove(output_path)
     
     def test_generate_excel_multiple_orders(self):
-        """Test that multiple orders are correctly written to Excel."""
+        """Test that multiple orders are correctly written to Excel (로젠양식)."""
         data = [
             {
                 "receiver_name": "이영희",
-                "full_address": "대구시 중구 동성로 111",
+                "address1": "대구시 중구 동성로",
+                "address2": "111",
                 "receiver_tel": "010-1111-2222",
                 "product_name": "키보드",
                 "delivery_memo": ""
             },
             {
                 "receiver_name": "박민수",
-                "full_address": "인천시 남동구 구월로 222",
+                "address1": "인천시 남동구 구월로",
+                "address2": "222",
                 "receiver_tel": "010-3333-4444",
                 "product_name": "마우스",
                 "delivery_memo": "부재시 경비실"
             },
             {
                 "receiver_name": "최지훈",
-                "full_address": "광주시 서구 상무대로 333",
+                "address1": "광주시 서구 상무대로",
+                "address2": "333",
                 "receiver_tel": "010-5555-6666",
                 "product_name": "모니터",
                 "delivery_memo": "조심히 다뤄주세요"
@@ -129,17 +140,17 @@ class TestLogenExcelGenerator:
             # Check row count (1 header + 3 data rows)
             assert ws.max_row == 4
             
-            # Check first data row
+            # Check first data row (품목명=열10)
             assert ws.cell(2, 1).value == "이영희"
-            assert ws.cell(2, 4).value == "키보드"
+            assert ws.cell(2, 10).value == "키보드"
             
             # Check second data row
             assert ws.cell(3, 1).value == "박민수"
-            assert ws.cell(3, 4).value == "마우스"
+            assert ws.cell(3, 10).value == "마우스"
             
             # Check third data row
             assert ws.cell(4, 1).value == "최지훈"
-            assert ws.cell(4, 4).value == "모니터"
+            assert ws.cell(4, 10).value == "모니터"
         finally:
             if os.path.exists(output_path):
                 os.remove(output_path)
@@ -168,7 +179,8 @@ class TestLogenExcelGenerator:
         data = [
             {
                 "receiver_name": "정수진",
-                "full_address": "대전시 유성구 대학로 444",
+                "address1": "대전시 유성구 대학로",
+                "address2": "444",
                 "receiver_tel": "010-7777-8888",
                 "product_name": "헤드폰",
                 "delivery_memo": ""
@@ -184,19 +196,19 @@ class TestLogenExcelGenerator:
             wb = load_workbook(output_path)
             ws = wb.active
             
-            # Check that delivery_memo is None (openpyxl stores empty strings as None)
-            assert ws.cell(2, 5).value is None or ws.cell(2, 5).value == ""
+            # Check that delivery_memo (열12) is None or empty
+            assert ws.cell(2, 12).value is None or ws.cell(2, 12).value == ""
         finally:
             if os.path.exists(output_path):
                 os.remove(output_path)
     
     def test_generate_excel_missing_fields(self):
-        """Test that missing fields are handled with empty strings."""
+        """Test that missing fields are handled with empty strings (full_address fallback)."""
         data = [
             {
                 "receiver_name": "강민지",
                 "full_address": "울산시 남구 삼산로 555"
-                # Missing receiver_tel, product_name, delivery_memo
+                # Missing address1, address2, receiver_tel, product_name, delivery_memo
             }
         ]
         
@@ -209,12 +221,12 @@ class TestLogenExcelGenerator:
             wb = load_workbook(output_path)
             ws = wb.active
             
-            # Check that missing fields are None or empty (openpyxl stores empty strings as None)
+            # full_address fallback: address1 gets full, address2 empty
             assert ws.cell(2, 1).value == "강민지"
-            assert ws.cell(2, 2).value == "울산시 남구 삼산로 555"
-            assert ws.cell(2, 3).value is None or ws.cell(2, 3).value == ""
-            assert ws.cell(2, 4).value is None or ws.cell(2, 4).value == ""
+            assert ws.cell(2, 3).value == "울산시 남구 삼산로 555"  # address1
+            assert ws.cell(2, 4).value is None or ws.cell(2, 4).value == ""  # address2
             assert ws.cell(2, 5).value is None or ws.cell(2, 5).value == ""
+            assert ws.cell(2, 10).value is None or ws.cell(2, 10).value == ""
         finally:
             if os.path.exists(output_path):
                 os.remove(output_path)
@@ -224,7 +236,8 @@ class TestLogenExcelGenerator:
         data = [
             {
                 "receiver_name": "테스트",
-                "full_address": "주소",
+                "address1": "주소",
+                "address2": "",
                 "receiver_tel": "010-0000-0000",
                 "product_name": "상품",
                 "delivery_memo": ""
@@ -241,11 +254,12 @@ class TestLogenExcelGenerator:
         assert exc_info.value.underlying_error is not None
     
     def test_generate_excel_column_order(self):
-        """Test that columns are in the correct order."""
+        """Test that columns are in the correct order (로젠양식)."""
         data = [
             {
                 "receiver_name": "A",
-                "full_address": "B",
+                "address1": "B1",
+                "address2": "B2",
                 "receiver_tel": "C",
                 "product_name": "D",
                 "delivery_memo": "E"
@@ -261,12 +275,13 @@ class TestLogenExcelGenerator:
             wb = load_workbook(output_path)
             ws = wb.active
             
-            # Check column order: A, B, C, D, E
-            assert ws.cell(2, 1).value == "A"  # Column A: receiver_name
-            assert ws.cell(2, 2).value == "B"  # Column B: full_address
-            assert ws.cell(2, 3).value == "C"  # Column C: receiver_tel
-            assert ws.cell(2, 4).value == "D"  # Column D: product_name
-            assert ws.cell(2, 5).value == "E"  # Column E: delivery_memo
+            # Check column order (로젠양식 15열)
+            assert ws.cell(2, 1).value == "A"   # 수하인명
+            assert ws.cell(2, 3).value == "B1"  # 수하인주소1
+            assert ws.cell(2, 4).value == "B2"  # 수하인주소2
+            assert ws.cell(2, 5).value == "C"   # 수하인전화번호
+            assert ws.cell(2, 10).value == "D"  # 품목명
+            assert ws.cell(2, 12).value == "E"  # 배송메세지
         finally:
             if os.path.exists(output_path):
                 os.remove(output_path)
