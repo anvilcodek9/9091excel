@@ -4,6 +4,7 @@ exe 실행용 엔트리 포인트.
 기간 지정: --from "2024-03-01T00:00:00" --to "2024-03-02T00:00:00" 또는 --hours 12
 """
 import argparse
+import os
 import sys
 
 # PyInstaller 번들에서 src 패키지 인식
@@ -17,7 +18,17 @@ def _stderr_msg(*parts: str) -> None:
     sys.stderr.buffer.flush()
 
 
-def main():
+def _has_env_credentials() -> bool:
+    """환경 변수로 토큰 또는 client_id/secret이 설정되어 있는지 확인."""
+    if os.environ.get("NAVER_ACCESS_TOKEN", "").strip():
+        return True
+    if os.environ.get("NAVER_CLIENT_ID", "").strip() and os.environ.get("NAVER_CLIENT_SECRET", "").strip():
+        return True
+    return False
+
+
+def main_cli():
+    """CLI 모드: 명령줄 인자로 기간 지정 후 엑셀 생성 (개발/자동화용)."""
     from src.main import generate_logen_shipping_file
     from src.exceptions import NaverAPIError, DataTransformError, ExcelGenerationError
 
@@ -27,8 +38,19 @@ def main():
     parser.add_argument("--hours", type=int, metavar="N", help="최근 N시간 기준 조회 (--from/--to 미지정 시 사용, 기본 24)")
     args = parser.parse_args()
 
+    # 환경 변수에 인증 정보가 없으면 Client ID/Secret 입력 창 표시
+    if not _has_env_credentials():
+        from src.token_dialog import show_credentials_dialog
+        creds = show_credentials_dialog()
+        if not creds or not creds[0] or not creds[1]:
+            _stderr_msg("Client ID / Client Secret이 입력되지 않았거나 취소되었습니다.")
+            return 1
+        os.environ["NAVER_CLIENT_ID"] = creds[0]
+        os.environ["NAVER_CLIENT_SECRET"] = creds[1]
+
     try:
         path = generate_logen_shipping_file(
+            access_token=None,
             from_iso=args.from_iso or None,
             to_iso=args.to_iso or None,
             last_hours=args.hours,
@@ -54,6 +76,15 @@ def main():
     except RuntimeError as e:
         _stderr_msg(f"실행 오류: {e}")
         return 1
+
+
+def main():
+    # 인자가 없으면 GUI 실행 (exe 더블클릭 또는 python run.py)
+    if len(sys.argv) == 1:
+        from src.gui_main import run_gui
+        run_gui()
+        return 0
+    return main_cli()
 
 
 if __name__ == "__main__":

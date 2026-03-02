@@ -54,7 +54,6 @@ def generate_logen_shipping_file(
     
     # Instantiate NaverCommerceClient with access_token
     client = NaverCommerceClient(access_token)
-    print(access_token)
     
     # 조회 기간: 인자 우선, 없으면 환경 변수, 최종 기본값 24시간
     if last_hours is None:
