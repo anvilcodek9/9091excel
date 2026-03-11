@@ -20,11 +20,8 @@ TYPE_SELF = "SELF"
 
 # 코드에 직접 내장해 사용하는 네이버 커머스 API 자격증명
 # (빌드 시점에 고정되며, 실행 시에는 이 값으로 토큰을 자동 발급합니다.)
-_EMBEDDED_CLIENT_ID = ""
-_EMBEDDED_CLIENT_SECRET = ""
-
-EMBEDDED_CLIENT_ID = "1mhIuTcinKzIvROL7yF4qz"
-EMBEDDED_CLIENT_SECRET = "$2a$04$HyUwz143rZ5b23R2nMqNX."
+EMBEDDED_CLIENT_ID = ""
+EMBEDDED_CLIENT_SECRET = ""
 
 
 def _is_ascii(value: str) -> bool:

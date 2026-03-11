@@ -39,8 +39,8 @@ class OrderTransformer:
                 - receiver_name: Recipient name
                 - full_address: Combined address (baseAddress + " " + detailedAddress)
                 - receiver_tel: Recipient phone number
-                - product_name: Product name (옵션정보가 우선)
-                - delivery_memo: Delivery instructions (empty string if null)
+                - product_name: Product name + option text (상품명 + 옵션정보)
+                - delivery_memo: "<옵션 마지막값> + 기존 배송메세지" 형식
                 - sender_name: Buyer name (보내는 분)
                 - sender_tel: Buyer phone (보내는 분 연락처)
                 
@@ -79,7 +79,31 @@ class OrderTransformer:
                 or order.get('ordererCellphone')
                 or ''
             )
-            product_for_logen = order.get('optionText') or order['productName']
+
+            option_text = (order.get('optionText') or '').strip()
+            product_name = (order.get('productName') or '').strip()
+
+            # 품목명: "상품명 + 옵션정보" 형태 (옵션 없으면 상품명만)
+            if option_text:
+                product_for_logen = f"{product_name} {option_text}".strip()
+            else:
+                product_for_logen = product_name
+
+            # 배송메시지: 옵션정보에서 마지막 값(대개 날짜) + 기존 배송메시지
+            original_memo = (order.get('deliveryMemo') or '').strip()
+            option_last = ''
+            if option_text:
+                # "/" 기준으로 마지막 토큰을 날짜로 간주
+                parts = [p.strip() for p in option_text.split('/') if p.strip()]
+                if parts:
+                    option_last = parts[-1]
+
+            if option_last and original_memo:
+                delivery_memo_for_logen = f"{option_last} {original_memo}"
+            elif option_last:
+                delivery_memo_for_logen = option_last
+            else:
+                delivery_memo_for_logen = original_memo
 
             # Transform to Logen format (로젠양식: 주소1, 주소2 분리)
             transformed_order = {
@@ -89,7 +113,7 @@ class OrderTransformer:
                 'full_address': order['baseAddress'] + ' ' + order['detailedAddress'],
                 'receiver_tel': order['receiverTel1'],
                 'product_name': product_for_logen,
-                'delivery_memo': order.get('deliveryMemo') or '',
+                'delivery_memo': delivery_memo_for_logen,
                 'buyer_name': buyer_name,
                 'buyer_tel': buyer_tel,
                 'sender_name': buyer_name,

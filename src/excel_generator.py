@@ -1,6 +1,9 @@
 """Excel file generator for Logen delivery format."""
 
+import os
+from datetime import datetime
 from typing import List, Dict
+
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 
@@ -115,9 +118,23 @@ class LogenExcelGenerator:
             
             # 열 너비 조절 (입력 글자 다 보이게)
             _adjust_column_widths(ws)
-            
-            wb.save(output_path)
-            return output_path
+
+            # 파일명이 이미 존재하면 충돌을 피하기 위해 임시 값을 붙여서 저장
+            final_path = output_path
+            if os.path.exists(final_path):
+                base, ext = os.path.splitext(final_path)
+                # 시각 기반 임시값(HHMMSS) 우선 추가
+                timestamp = datetime.now().strftime("%H%M%S")
+                candidate = f"{base}_{timestamp}{ext}"
+                counter = 1
+                # 혹시 같은 시각에 여러 번 생성하는 경우를 대비해 카운터까지 추가
+                while os.path.exists(candidate):
+                    candidate = f"{base}_{timestamp}_{counter}{ext}"
+                    counter += 1
+                final_path = candidate
+
+            wb.save(final_path)
+            return final_path
             
         except Exception as e:
             raise ExcelGenerationError(

@@ -2,7 +2,7 @@
 
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 
@@ -36,6 +36,113 @@ class NaverCommerceClient:
         self.max_retries = 3
         self.initial_delay = 1
         self.backoff_multiplier = 2
+
+    @staticmethod
+    def _extract_raw_list(data: Any) -> List[Dict[str, Any]]:
+        """API 응답에서 주문 항목 리스트를 추출."""
+        raw_list: Any = None
+        if isinstance(data, dict) and "data" in data:
+            inner = data["data"]
+            if isinstance(inner, list):
+                raw_list = inner
+            elif isinstance(inner, dict):
+                raw_list = inner.get("contents") or inner.get("orders") or inner.get("productOrders")
+                if raw_list is None and "content" in inner:
+                    raw_content = inner["content"]
+                    raw_list = raw_content if isinstance(raw_content, list) else [raw_content]
+        elif isinstance(data, list):
+            raw_list = data
+
+        if not isinstance(raw_list, list):
+            return []
+        return [item for item in raw_list if isinstance(item, dict)]
+
+    @staticmethod
+    def _extract_product_order_id(item: Dict[str, Any]) -> str:
+        """raw item에서 productOrderId를 최대한 안전하게 추출."""
+        block = item.get("content") if isinstance(item.get("content"), dict) else item
+        product_order = block.get("productOrder") if isinstance(block.get("productOrder"), dict) else {}
+        return str(
+            product_order.get("productOrderId")
+            or block.get("productOrderId")
+            or item.get("productOrderId")
+            or ""
+        ).strip()
+
+    def _fetch_order_details_by_ids(self, product_order_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+        """
+        productOrderId 리스트로 상세조회 후, id -> {order, productOrder} 맵을 반환.
+        실패 시 빈 dict 반환(호출부에서 기존 응답으로 폴백).
+        """
+        unique_ids = []
+        seen = set()
+        for pid in product_order_ids:
+            val = str(pid or "").strip()
+            if val and val not in seen:
+                seen.add(val)
+                unique_ids.append(val)
+        if not unique_ids:
+            return {}
+
+        url = f"{self.base_url}/pay-order/seller/product-orders/query"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+        detail_map: Dict[str, Dict[str, Any]] = {}
+
+        # API 한 번에 너무 많은 ID를 보내지 않도록 청크 조회
+        chunk_size = 100
+        for i in range(0, len(unique_ids), chunk_size):
+            chunk_ids = unique_ids[i : i + chunk_size]
+            payload = {"productOrderIds": chunk_ids}
+
+            last_error: Optional[Exception] = None
+            for attempt in range(self.max_retries):
+                try:
+                    response = requests.post(url, headers=headers, json=payload, timeout=30)
+                    if response.status_code == 401:
+                        raise NaverAPIError(
+                            "Authentication failed: Invalid or expired access token",
+                            status_code=401,
+                            response_body=response.text,
+                        )
+                    if response.status_code >= 500:
+                        if attempt < self.max_retries - 1:
+                            delay = self.initial_delay * (self.backoff_multiplier ** attempt)
+                            time.sleep(delay)
+                            continue
+                        break
+                    if not response.ok:
+                        break
+
+                    detail_items = self._extract_raw_list(response.json())
+                    for item in detail_items:
+                        block = item.get("content") if isinstance(item.get("content"), dict) else item
+                        order_block = block.get("order") if isinstance(block.get("order"), dict) else {}
+                        product_order = block.get("productOrder") if isinstance(block.get("productOrder"), dict) else {}
+                        product_order_id = str(
+                            product_order.get("productOrderId")
+                            or block.get("productOrderId")
+                            or ""
+                        ).strip()
+                        if not product_order_id:
+                            continue
+                        detail_map[product_order_id] = {
+                            "order": order_block,
+                            "productOrder": product_order,
+                        }
+                    break
+                except requests.exceptions.RequestException as e:
+                    last_error = e
+                    if attempt < self.max_retries - 1:
+                        delay = self.initial_delay * (self.backoff_multiplier ** attempt)
+                        time.sleep(delay)
+                        continue
+            # 청크 단위로 실패해도 전체 실패로 중단하지 않고 가능한 데이터만 사용
+            _ = last_error
+
+        return detail_map
     
     def fetch_orders(
         self,
@@ -181,30 +288,22 @@ class NaverCommerceClient:
                 # Success - parse and return the response
                 data = response.json()
                 
-                # 조건형 상품 주문 상세 내역 조회 API 응답 형태:
-                # (1) data: [ { "order": {...}, "productOrder": {...} } ]
-                # (2) data: { "contents": [ { "content": { "order": {...}, "productOrder": {...} } } ] }
-                raw_list = None
-                if isinstance(data, dict) and "data" in data:
-                    inner = data["data"]
-                    if isinstance(inner, list):
-                        raw_list = inner
-                    elif isinstance(inner, dict):
-                        raw_list = inner.get("contents") or inner.get("orders") or inner.get("productOrders")
-                        if raw_list is None and "content" in inner:
-                            raw_list = inner["content"] if isinstance(inner["content"], list) else [inner["content"]]
-                        if raw_list is None:
-                            raw_list = []
-                elif isinstance(data, list):
-                    raw_list = data
-                else:
-                    raw_list = []
+                # 조건형/상세 조회 API 응답에서 항목 리스트 추출
+                raw_list = self._extract_raw_list(data)
 
                 if not raw_list:
                     return []
 
+                # place_order_status 모드에서는 productOrderId로 상세 재조회하여
+                # 클레임 승인완료/발송 여부를 상세 상태값으로 검증한다.
+                detail_map: Dict[str, Dict[str, Any]] = {}
+                if place_order_status:
+                    ids = [self._extract_product_order_id(item) for item in raw_list]
+                    detail_map = self._fetch_order_details_by_ids(ids)
+
                 # API 스키마에 맞게 평탄화: order + productOrder + shippingAddress -> 한 건당 하나의 flat dict
                 # contents[] 항목은 { "content": { "order", "productOrder" } } 형태일 수 있음
+
                 orders = []
                 for item in raw_list:
                     if not isinstance(item, dict):
@@ -213,21 +312,38 @@ class NaverCommerceClient:
                     order_block = block.get("order") or {}
                     product_order = block.get("productOrder") or {}
 
+                    # place_order_status 모드에서는 상세조회 결과를 우선 사용
+                    if place_order_status:
+                        product_order_id = self._extract_product_order_id(item)
+                        detail = detail_map.get(product_order_id) if product_order_id else None
+                        if detail:
+                            order_block = detail.get("order") or order_block
+                            product_order = detail.get("productOrder") or product_order
+
                     if product_order:
-                        # 결제완료(PAYED) 필수; 배송상태는 shipping_status 또는 place_order_status(발주확인)로 필터
+                        # place_order_status 미사용 시에만 결제상태 필터 적용
                         payment_status_val = (
                             order_block.get("paymentStatus")
                             or product_order.get("paymentStatus")
                             or ""
                         ).strip().upper()
-                        if payment_status_val and payment_status_val != "PAYED":
+                        if (not place_order_status) and payment_status_val and payment_status_val != "PAYED":
                             continue
+
                         if place_order_status:
                             # 발주확인(OK)만 포함: placeOrderStatus로 필터 (API 요청 파라미터 미지원이라 응답에서 필터)
                             place_ok = (
                                 (product_order.get("placeOrderStatus") or order_block.get("placeOrderStatus") or "")
                             ).strip().upper()
                             if place_ok != place_order_status.upper():
+                                continue
+                            # 요청 기준: productOrderStatus가 PAYED인 건만 포함
+                            product_order_status_val = (
+                                product_order.get("productOrderStatus")
+                                or order_block.get("productOrderStatus")
+                                or ""
+                            ).strip().upper()
+                            if product_order_status_val != "PAYED":
                                 continue
                         else:
                             shipping_status_val = (
@@ -240,8 +356,6 @@ class NaverCommerceClient:
                             ).strip().upper()
                             if shipping_status_val and shipping_status_val != "READY":
                                 continue
-
-                        # 구매자 정보(보내는 분) 및 옵션 정보 추출
                         buyer_name = (
                             order_block.get("ordererName")
                             or order_block.get("buyerName")
@@ -317,11 +431,18 @@ class NaverCommerceClient:
                         if "orderId" in flat and "order_id" not in flat:
                             flat["order_id"] = flat.get("orderId", "")
                         pay = (flat.get("paymentStatus") or "").upper()
-                        if pay and pay != "PAYED":
+                        if (not place_order_status) and pay and pay != "PAYED":
                             continue
+
                         if place_order_status:
                             place_ok = (flat.get("placeOrderStatus") or "").upper()
                             if place_ok != place_order_status.upper():
+                                continue
+                            product_order_status_val = (
+                                flat.get("productOrderStatus")
+                                or ""
+                            ).strip().upper()
+                            if product_order_status_val != "PAYED":
                                 continue
                         else:
                             ship = (flat.get("shippingStatus") or flat.get("productOrderStatus") or "").upper()
