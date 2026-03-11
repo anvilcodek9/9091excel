@@ -38,16 +38,6 @@ def main_cli():
     parser.add_argument("--hours", type=int, metavar="N", help="최근 N시간 기준 조회 (--from/--to 미지정 시 사용, 기본 24)")
     args = parser.parse_args()
 
-    # 환경 변수에 인증 정보가 없으면 Client ID/Secret 입력 창 표시
-    if not _has_env_credentials():
-        from src.token_dialog import show_credentials_dialog
-        creds = show_credentials_dialog()
-        if not creds or not creds[0] or not creds[1]:
-            _stderr_msg("Client ID / Client Secret이 입력되지 않았거나 취소되었습니다.")
-            return 1
-        os.environ["NAVER_CLIENT_ID"] = creds[0]
-        os.environ["NAVER_CLIENT_SECRET"] = creds[1]
-
     try:
         path = generate_logen_shipping_file(
             access_token=None,

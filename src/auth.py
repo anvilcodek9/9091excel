@@ -6,7 +6,7 @@ client_id/client_secret으로 액세스 토큰을 발급합니다.
 
 import base64
 import time
-from typing import Optional
+from typing import Optional, Tuple
 from urllib.parse import urlencode
 
 import bcrypt
@@ -17,6 +17,14 @@ from .exceptions import NaverAPIError
 TOKEN_URL = "https://api.commerce.naver.com/external/v1/oauth2/token"
 GRANT_TYPE = "client_credentials"
 TYPE_SELF = "SELF"
+
+# 코드에 직접 내장해 사용하는 네이버 커머스 API 자격증명
+# (빌드 시점에 고정되며, 실행 시에는 이 값으로 토큰을 자동 발급합니다.)
+_EMBEDDED_CLIENT_ID = ""
+_EMBEDDED_CLIENT_SECRET = ""
+
+EMBEDDED_CLIENT_ID = "1mhluTcinKzlvROL7yF4qz"
+EMBEDDED_CLIENT_SECRET = "$2a$04$HyUwz143rZ5b23R2nMqNX."
 
 
 def _is_ascii(value: str) -> bool:
@@ -143,12 +151,25 @@ def resolve_access_token(
         if _is_ascii(token) and (" " not in token) and ("\n" not in token) and ("\r" not in token):
             return token
         # 비정상 토큰은 무시하고 client_id/secret 자동 발급으로 폴백
+
+    # 1순위: 함수 인자/환경 변수로 전달된 client_id / client_secret
     if client_id and client_secret and client_id.strip() and client_secret.strip():
-        normalized_secret = _validate_client_secret(client_secret)
-        return get_access_token(client_id.strip(), normalized_secret)
+        try:
+            normalized_secret = _validate_client_secret(client_secret)
+            return get_access_token(client_id.strip(), normalized_secret)
+        except ValueError:
+            # 환경 변수 등이 깨진 경우에는 무시하고 내장 자격증명으로 폴백
+            pass
+
+    # 2순위: 코드에 내장된 자격증명(빌드 시 고정)
+    if EMBEDDED_CLIENT_ID and EMBEDDED_CLIENT_SECRET:
+        normalized_secret = _validate_client_secret(EMBEDDED_CLIENT_SECRET)
+        return get_access_token(EMBEDDED_CLIENT_ID, normalized_secret)
+
     raise ValueError(
         "액세스 토큰을 사용할 수 없습니다. "
         "다음 중 하나를 설정하세요: "
         "1) access_token 인자 또는 NAVER_ACCESS_TOKEN 환경 변수(ASCII 토큰), "
-        "2) NAVER_CLIENT_ID + NAVER_CLIENT_SECRET 환경 변수(자동 발급)"
+        "2) NAVER_CLIENT_ID + NAVER_CLIENT_SECRET 환경 변수(자동 발급), "
+        "3) 또는 빌드 시 생성된 naver_credentials.json 파일"
     )

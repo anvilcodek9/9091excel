@@ -18,14 +18,6 @@ def _get_app_dir() -> str:
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _has_env_credentials() -> bool:
-    if os.environ.get("NAVER_ACCESS_TOKEN", "").strip():
-        return True
-    if os.environ.get("NAVER_CLIENT_ID", "").strip() and os.environ.get("NAVER_CLIENT_SECRET", "").strip():
-        return True
-    return False
-
-
 def _run_in_background(
     root: tk.Tk,
     fn: Callable[[], Any],
@@ -65,7 +57,6 @@ def _run_in_background(
 def run_gui() -> None:
     from .main import generate_logen_shipping_file
     from .exceptions import NaverAPIError, DataTransformError, ExcelGenerationError
-    from .token_dialog import show_credentials_dialog
 
     app_dir = _get_app_dir()
     # 생성 파일이 exe와 같은 폴더에 저장되도록
@@ -82,32 +73,6 @@ def run_gui() -> None:
 
     main = ttk.Frame(root, padding=main_pad)
     main.pack(fill=tk.BOTH, expand=True)
-
-    # ---- 인증 ----
-    auth_frame = ttk.LabelFrame(main, text="인증", padding=8)
-    auth_frame.pack(fill=tk.X, pady=section_pad)
-
-    token_status = tk.StringVar(value="환경 변수 미설정 — 아래 [인증 설정]에서 Client ID / Secret을 입력하세요.")
-    if _has_env_credentials():
-        token_status.set("환경 변수로 인증 정보가 설정되어 있습니다.")
-
-    ttk.Label(auth_frame, textvariable=token_status, wraplength=400).pack(anchor=tk.W)
-    stored_client_id: list = [None]  # Optional[str]
-    stored_client_secret: list = [None]  # Optional[str]
-
-    def open_credentials_dialog():
-        creds = show_credentials_dialog(parent=root)
-        if creds and creds[0] and creds[1]:
-            stored_client_id[0], stored_client_secret[0] = creds[0], creds[1]
-            token_status.set("✓ 토큰 발급 확인됨 — 인증 정보가 저장되었습니다. (엑셀 생성 시 토큰 자동 발급)")
-            root.update_idletasks()
-        else:
-            stored_client_id[0], stored_client_secret[0] = None, None
-            if not _has_env_credentials():
-                token_status.set("인증 정보가 입력되지 않았습니다. [인증 설정]에서 Client ID / Secret을 입력하세요.")
-            root.update_idletasks()
-
-    ttk.Button(auth_frame, text="인증 설정", command=open_credentials_dialog).pack(anchor=tk.W, pady=(6, 0))
 
     # ---- 조회 기간 ----
     period_frame = ttk.LabelFrame(main, text="조회 기간", padding=8)
@@ -191,20 +156,7 @@ def run_gui() -> None:
     open_folder_btn = ttk.Button(main, text="저장 폴더 열기", command=open_save_folder)
     open_folder_btn.pack(anchor=tk.W, pady=(6, 0))
 
-    def apply_stored_credentials():
-        """GUI에서 입력한 Client ID/Secret을 이번 실행을 위해 환경 변수에 넣습니다."""
-        if stored_client_id[0] and stored_client_secret[0]:
-            os.environ["NAVER_CLIENT_ID"] = stored_client_id[0]
-            os.environ["NAVER_CLIENT_SECRET"] = stored_client_secret[0]
-
     def do_generate():
-        has_stored = bool(stored_client_id[0] and stored_client_secret[0])
-        if not _has_env_credentials() and not has_stored:
-            messagebox.showwarning("인증 필요", "[인증 설정]에서 Client ID와 Client Secret을 입력해 주세요.")
-            return
-        # GUI에서 방금 입력한 ID/시크릿이 있으면 환경 변수에 넣어 이번 실행에 사용
-        apply_stored_credentials()
-
         from_iso = None
         to_iso = None
         last_hours = None

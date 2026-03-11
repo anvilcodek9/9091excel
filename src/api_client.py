@@ -231,10 +231,65 @@ class NaverCommerceClient:
                                 continue
                         else:
                             shipping_status_val = (
-                                (product_order.get("productOrderStatus") or product_order.get("shippingStatus") or order_block.get("shippingStatus") or "")
+                                (
+                                    product_order.get("productOrderStatus")
+                                    or product_order.get("shippingStatus")
+                                    or order_block.get("shippingStatus")
+                                    or ""
+                                )
                             ).strip().upper()
                             if shipping_status_val and shipping_status_val != "READY":
                                 continue
+
+                        # 구매자 정보(보내는 분) 및 옵션 정보 추출
+                        buyer_name = (
+                            order_block.get("ordererName")
+                            or order_block.get("buyerName")
+                            or ""
+                        )
+                        buyer_tel = (
+                            order_block.get("ordererTel")
+                            or order_block.get("ordererCellphone")
+                            or order_block.get("buyerTel")
+                            or order_block.get("buyerCellphone")
+                            or ""
+                        )
+
+                        # 옵션 정보는 배열/객체/문자열 등 다양한 형태일 수 있으므로 유연하게 문자열로 변환
+                        raw_option = (
+                            product_order.get("optionInfo")
+                            or product_order.get("productOption")
+                            or product_order.get("option")
+                            or ""
+                        )
+                        option_text = ""
+                        if isinstance(raw_option, list):
+                            parts = []
+                            for opt in raw_option:
+                                if isinstance(opt, dict):
+                                    name = opt.get("optionName") or opt.get("name")
+                                    value = opt.get("optionValue") or opt.get("value")
+                                    if name and value:
+                                        parts.append(f"{name}:{value}")
+                                    elif value:
+                                        parts.append(str(value))
+                                elif opt is not None:
+                                    parts.append(str(opt))
+                            option_text = ", ".join(parts)
+                        elif isinstance(raw_option, dict):
+                            name = raw_option.get("optionName") or raw_option.get("name")
+                            value = raw_option.get("optionValue") or raw_option.get("value")
+                            if name and value:
+                                option_text = f"{name}:{value}"
+                            else:
+                                option_text = str(value or name or "")
+                        elif raw_option:
+                            option_text = str(raw_option)
+
+                        # 옵션 정보가 전혀 없으면 상품명으로 폴백
+                        if not option_text:
+                            option_text = product_order.get("productName") or ""
+
                         # 실제 API 응답: order + productOrder + shippingAddress
                         shipping = product_order.get("shippingAddress") or {}
                         order_id = order_block.get("orderId") or product_order.get("productOrderId") or ""
@@ -252,6 +307,9 @@ class NaverCommerceClient:
                             "receiverTel1": receiver_tel,
                             "productName": product_name,
                             "deliveryMemo": delivery_memo,
+                            "buyerName": buyer_name,
+                            "buyerTel": buyer_tel,
+                            "optionText": option_text,
                         })
                     else:
                         # 이미 flat 형태(테스트/레거시): 결제완료 + (배송준비중 또는 발주확인)만 포함
@@ -269,6 +327,56 @@ class NaverCommerceClient:
                             ship = (flat.get("shippingStatus") or flat.get("productOrderStatus") or "").upper()
                             if ship and ship != "READY":
                                 continue
+
+                        # flat 구조에서도 구매자 정보와 옵션 정보 보강
+                        buyer_name = (
+                            flat.get("ordererName")
+                            or flat.get("buyerName")
+                            or ""
+                        )
+                        buyer_tel = (
+                            flat.get("ordererTel")
+                            or flat.get("ordererCellphone")
+                            or flat.get("buyerTel")
+                            or flat.get("buyerCellphone")
+                            or ""
+                        )
+                        raw_option = (
+                            flat.get("optionInfo")
+                            or flat.get("productOption")
+                            or flat.get("option")
+                            or ""
+                        )
+                        option_text = ""
+                        if isinstance(raw_option, list):
+                            parts = []
+                            for opt in raw_option:
+                                if isinstance(opt, dict):
+                                    name = opt.get("optionName") or opt.get("name")
+                                    value = opt.get("optionValue") or opt.get("value")
+                                    if name and value:
+                                        parts.append(f"{name}:{value}")
+                                    elif value:
+                                        parts.append(str(value))
+                                elif opt is not None:
+                                    parts.append(str(opt))
+                            option_text = ", ".join(parts)
+                        elif isinstance(raw_option, dict):
+                            name = raw_option.get("optionName") or raw_option.get("name")
+                            value = raw_option.get("optionValue") or raw_option.get("value")
+                            if name and value:
+                                option_text = f"{name}:{value}"
+                            else:
+                                option_text = str(value or name or "")
+                        elif raw_option:
+                            option_text = str(raw_option)
+
+                        if not option_text:
+                            option_text = flat.get("productName") or ""
+
+                        flat["buyerName"] = buyer_name
+                        flat["buyerTel"] = buyer_tel
+                        flat["optionText"] = option_text
                         orders.append(flat)
                 return orders
             

@@ -31,6 +31,7 @@ if %errorlevel% neq 0 (
 
 echo.
 echo [2/3] PyInstaller로 exe 빌드 중...
+echo.
 %PYTHON_CMD% -m PyInstaller logen_excel.spec --noconfirm
 if %errorlevel% neq 0 (
     echo [오류] 빌드 실패

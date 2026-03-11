@@ -62,8 +62,10 @@ class LogenExcelGenerator:
                 - receiver_name: 수하인명
                 - address1, address2 또는 full_address: 수하인주소1 한 칸에 통합 저장
                 - receiver_tel: 수하인전화번호
-                - product_name: 품목명
+                - product_name: 품목명 (옵션정보 우선)
                 - delivery_memo: 배송메세지 (도착일)
+                - sender_name: 보내는 분 (구매자명)
+                - sender_tel: 보내는 분 연락처 (구매자 연락처)
             output_path: Path for output Excel file
             
         Returns:
@@ -90,6 +92,9 @@ class LogenExcelGenerator:
                     address1, address2 = (full, "") if full else ("", "")
                 full_address = f"{address1} {address2}".strip() if (address1 or address2) else ""
                 receiver_tel = order.get("receiver_tel", "")
+                sender_name = order.get("sender_name") or order.get("buyer_name") or ""
+                sender_tel = order.get("sender_tel") or order.get("buyer_tel") or ""
+                sender_addr = order.get("sender_address", "")
                 
                 row = [
                     order.get("receiver_name", ""),      # A
@@ -99,10 +104,12 @@ class LogenExcelGenerator:
                     receiver_tel,                         # F 수하인핸드폰번호
                     1,                                    # G 택배수량
                     "", "",                              # H, I 빈칸
-                    order.get("product_name", ""),       # J 품목명
+                    order.get("product_name", ""),       # J 품목명 (옵션정보)
                     "",                                  # K 빈칸
                     order.get("delivery_memo", ""),      # L 배송메세지
-                    "", "", "",                          # M, N, O 보내는분/연락처/주소
+                    sender_name,                         # M 보내는분 (구매자명)
+                    sender_tel,                          # N 연락처 (구매자 연락처)
+                    sender_addr,                         # O 주소 (보내는 분 주소, 선택)
                 ]
                 ws.append(row)
             

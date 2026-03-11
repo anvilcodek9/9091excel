@@ -30,14 +30,19 @@ class OrderTransformer:
                 - receiverTel1: Recipient phone number
                 - productName: Product name
                 - deliveryMemo: Delivery instructions (optional)
+                - buyerName: Buyer name (구매자명, 보내는 분)
+                - buyerTel: Buyer phone (구매자 연락처, 보내는 분 연락처)
+                - optionText: Option information text (옵션정보)
                 
         Returns:
             List of dictionaries with Logen format fields:
                 - receiver_name: Recipient name
                 - full_address: Combined address (baseAddress + " " + detailedAddress)
                 - receiver_tel: Recipient phone number
-                - product_name: Product name
+                - product_name: Product name (옵션정보가 우선)
                 - delivery_memo: Delivery instructions (empty string if null)
+                - sender_name: Buyer name (보내는 분)
+                - sender_tel: Buyer phone (보내는 분 연락처)
                 
         Raises:
             DataTransformError: When required fields are missing, includes order ID
@@ -49,23 +54,33 @@ class OrderTransformer:
             # Get order_id for error reporting
             order_id = order.get('order_id', 'unknown')
             
-            # Validate required fields
+            # Validate required 필드 (수취인/주소/상품명)
             required_fields = {
                 'receiverName': 'receiverName',
                 'baseAddress': 'baseAddress',
                 'detailedAddress': 'detailedAddress',
                 'receiverTel1': 'receiverTel1',
-                'productName': 'productName'
+                'productName': 'productName',
             }
-            
+
             for field_key, field_name in required_fields.items():
                 if field_key not in order or order[field_key] is None:
                     raise DataTransformError(
                         f"Missing required field: {field_name}",
                         order_id=order_id,
-                        missing_field=field_name
+                        missing_field=field_name,
                     )
-            
+
+            # 구매자(보내는 분) 정보 및 옵션정보 처리
+            buyer_name = order.get('buyerName') or order.get('ordererName') or ''
+            buyer_tel = (
+                order.get('buyerTel')
+                or order.get('ordererTel')
+                or order.get('ordererCellphone')
+                or ''
+            )
+            product_for_logen = order.get('optionText') or order['productName']
+
             # Transform to Logen format (로젠양식: 주소1, 주소2 분리)
             transformed_order = {
                 'receiver_name': order['receiverName'],
@@ -73,8 +88,12 @@ class OrderTransformer:
                 'address2': order['detailedAddress'],
                 'full_address': order['baseAddress'] + ' ' + order['detailedAddress'],
                 'receiver_tel': order['receiverTel1'],
-                'product_name': order['productName'],
-                'delivery_memo': order.get('deliveryMemo') or ''
+                'product_name': product_for_logen,
+                'delivery_memo': order.get('deliveryMemo') or '',
+                'buyer_name': buyer_name,
+                'buyer_tel': buyer_tel,
+                'sender_name': buyer_name,
+                'sender_tel': buyer_tel,
             }
             
             transformed_orders.append(transformed_order)
