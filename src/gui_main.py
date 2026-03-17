@@ -5,206 +5,331 @@
 
 import os
 import sys
+import platform
 import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Callable, Any
 
-# exe 실행 시 작업 디렉터리를 exe 위치로 고정 (생성 파일이 exe 옆에 저장되도록)
+from .main import generate_logen_shipping_file
+from .exceptions import NaverAPIError, DataTransformError, ExcelGenerationError
+
+
 def _get_app_dir() -> str:
+    """exe 실행 시 작업 디렉터리를 exe 위치로 고정 (생성 파일이 exe 옆에 저장되도록)"""
     if getattr(sys, "frozen", False):
         return os.path.dirname(os.path.abspath(sys.argv[0]))
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _run_in_background(
-    root: tk.Tk,
-    fn: Callable[[], Any],
-    on_start: Callable[[], None],
-    on_done: Callable[[], None],
-    on_success: Callable[[Any], None],
-    on_error: Callable[[Exception], None],
-) -> None:
-    result: list = [None]
-    error_holder: list = [None]
+class BackgroundWorker:
+    """백그라운드 스레드 실행을 도와주는 유틸리티 클래스 (UI 블로킹 방지)"""
+    
+    @staticmethod
+    def run(
+        root: tk.Tk,
+        fn: Callable[[], Any],
+        on_start: Callable[[], None],
+        on_done: Callable[[], None],
+        on_success: Callable[[Any], None],
+        on_error: Callable[[Exception], None],
+    ) -> None:
+        result: list = [None]
+        error_holder: list = [None]
 
-    def worker():
-        try:
-            result[0] = fn()
-        except Exception as e:
-            error_holder[0] = e
+        def worker():
+            try:
+                result[0] = fn()
+            except Exception as e:
+                error_holder[0] = e
 
-    def on_worker_done():
-        on_done()
-        if error_holder[0] is not None:
-            on_error(error_holder[0])
-        else:
-            on_success(result[0])
+        def on_worker_done():
+            on_done()
+            if error_holder[0] is not None:
+                on_error(error_holder[0])
+            else:
+                on_success(result[0])
 
-    def poll():
-        if not t.is_alive():
-            on_worker_done()
-            return
+        def poll():
+            if not t.is_alive():
+                on_worker_done()
+                return
+            root.after(100, poll)
+
+        on_start()
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
         root.after(100, poll)
 
-    on_start()
-    t = threading.Thread(target=worker, daemon=True)
-    t.start()
-    root.after(100, poll)
 
+class LogenExcelApp:
+    """로젠 발송 엑셀 생성기 메인 앱 애플리케이션 클래스"""
 
-def run_gui() -> None:
-    from .main import generate_logen_shipping_file
-    from .exceptions import NaverAPIError, DataTransformError, ExcelGenerationError
+    def __init__(self):
+        self.app_dir = _get_app_dir()
+        os.chdir(self.app_dir)
 
-    app_dir = _get_app_dir()
-    # 생성 파일이 exe와 같은 폴더에 저장되도록
-    os.chdir(app_dir)
+        self.root = tk.Tk()
+        self.root.title("로젠 택배 발송 엑셀 생성기")
+        self.root.minsize(560, 520)
 
-    root = tk.Tk()
-    root.title("로젠 발송 엑셀 생성기")
-    root.resizable(True, True)
-    root.minsize(420, 380)
+        # UI 변수 상태 선언
+        self.period_mode = tk.StringVar(value="hours")
+        self.from_var = tk.StringVar()
+        self.to_var = tk.StringVar()
+        self.hours_spin_var = tk.StringVar(value="24")
+        self.save_path_var = tk.StringVar(value=self.app_dir)
+        self.keyword_var = tk.StringVar(value="")
+        self.status_var = tk.StringVar(value="대기 중 · 조회 기간을 선택하세요")
 
-    # 스타일
-    main_pad = 16
-    section_pad = (0, 12)
+        self.root.configure(bg="#ffffff")
+        self._init_default_dates()
+        self._setup_style()
+        self._setup_ui()
+        self._center_window()
 
-    main = ttk.Frame(root, padding=main_pad)
-    main.pack(fill=tk.BOTH, expand=True)
+    def _init_default_dates(self):
+        today = datetime.now()
+        default_to = today.strftime("%Y-%m-%d")
+        default_from = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+        self.from_var.set(default_from)
+        self.to_var.set(default_to)
 
-    # ---- 조회 기간 ----
-    period_frame = ttk.LabelFrame(main, text="조회 기간", padding=8)
-    period_frame.pack(fill=tk.X, pady=section_pad)
-
-    period_mode = tk.StringVar(value="hours")
-    from_var = tk.StringVar()
-    to_var = tk.StringVar()
-
-    today = datetime.now()
-    default_to = today.strftime("%Y-%m-%d")
-    default_from = (today - timedelta(days=1)).strftime("%Y-%m-%d")
-    from_var.set(default_from)
-    to_var.set(default_to)
-
-    def on_period_mode_change():
-        if period_mode.get() == "hours":
-            hours_frame.pack(fill=tk.X)
-            range_frame.pack_forget()
-        else:
-            hours_frame.pack_forget()
-            range_frame.pack(fill=tk.X)
-
-    ttk.Radiobutton(
-        period_frame,
-        text="최근 N시간 기준",
-        variable=period_mode,
-        value="hours",
-        command=on_period_mode_change,
-    ).pack(anchor=tk.W)
-    hours_frame = ttk.Frame(period_frame)
-    hours_frame.pack(fill=tk.X)
-    hours_spin_var = tk.StringVar(value="24")
-    ttk.Spinbox(hours_frame, from_=1, to=168, width=6, textvariable=hours_spin_var).pack(side=tk.LEFT, padx=(20, 6))
-    ttk.Label(hours_frame, text="시간 (1~168)").pack(side=tk.LEFT)
-
-    ttk.Radiobutton(
-        period_frame,
-        text="기간 지정 (시작일 ~ 종료일, 해당일 00:00~24:00)",
-        variable=period_mode,
-        value="range",
-        command=on_period_mode_change,
-    ).pack(anchor=tk.W, pady=(8, 0))
-    range_frame = ttk.Frame(period_frame)
-    ttk.Label(range_frame, text="시작일:").pack(side=tk.LEFT, padx=(20, 4))
-    from_entry = ttk.Entry(range_frame, width=12, textvariable=from_var)
-    from_entry.pack(side=tk.LEFT, padx=(0, 12))
-    ttk.Label(range_frame, text="종료일:").pack(side=tk.LEFT, padx=(0, 4))
-    to_entry = ttk.Entry(range_frame, width=12, textvariable=to_var)
-    to_entry.pack(side=tk.LEFT)
-    ttk.Label(range_frame, text="  (예: 2024-03-01)").pack(side=tk.LEFT, padx=(4, 0))
-
-    on_period_mode_change()
-
-    # ---- 저장 위치 (표시용) ----
-    save_frame = ttk.Frame(main)
-    save_frame.pack(fill=tk.X, pady=section_pad)
-    ttk.Label(save_frame, text="저장 위치:").pack(side=tk.LEFT)
-    save_path_var = tk.StringVar(value=app_dir)
-    ttk.Label(save_frame, textvariable=save_path_var, foreground="gray").pack(side=tk.LEFT, padx=(4, 0))
-
-    # ---- 제외 키워드 ----
-    keyword_frame = ttk.Frame(main)
-    keyword_frame.pack(fill=tk.X, pady=section_pad)
-    ttk.Label(keyword_frame, text="제외할 키워드 (쉼표 구분):").pack(side=tk.LEFT)
-    keyword_var = tk.StringVar(value="")
-    keyword_entry = ttk.Entry(keyword_frame, textvariable=keyword_var, width=30)
-    keyword_entry.pack(side=tk.LEFT, padx=(4, 0))
-    ttk.Label(keyword_frame, text="(예: 특가, 무료배송)").pack(side=tk.LEFT, padx=(4, 0))
-
-    # ---- 실행 버튼 ----
-    run_btn = ttk.Button(main, text="엑셀 생성", command=None)
-    run_btn.pack(pady=(8, 0))
-
-    # ---- 상태/결과 ----
-    status_var = tk.StringVar(value="대기 중입니다. 조회 기간을 선택한 뒤 [엑셀 생성]을 누르세요.")
-    status_label = ttk.Label(main, textvariable=status_var, wraplength=400, justify=tk.LEFT)
-    status_label.pack(anchor=tk.W, pady=(12, 0))
-
-    def open_save_folder():
-        """엑셀 저장 폴더(프로그램 위치)를 파일 탐색기로 연다."""
-        try:
-            if not os.path.isdir(app_dir):
-                messagebox.showerror("폴더 없음", f"저장 폴더를 찾을 수 없습니다.\n\n{app_dir}")
-                return
-            import platform
-            import subprocess
+    def _setup_style(self):
+        """테마, 여백, 폰트 등 전역 스타일을 세팅합니다."""
+        self.style = ttk.Style(self.root)
+        if 'clam' in self.style.theme_names():
+            self.style.theme_use('clam')
             
+        sys_os = platform.system()
+        if sys_os == 'Darwin':
+            self.base_font = ('Helvetica Neue', 13)
+            self.bold_font = ('Helvetica Neue', 13, 'bold')
+            self.large_font = ('Helvetica Neue', 15, 'bold')
+            self.title_font = ('Helvetica Neue', 22, 'bold')
+        elif sys_os == 'Windows':
+            self.base_font = ('Malgun Gothic', 10)
+            self.bold_font = ('Malgun Gothic', 10, 'bold')
+            self.large_font = ('Malgun Gothic', 12, 'bold')
+            self.title_font = ('Malgun Gothic', 18, 'bold')
+        else:
+            self.base_font = ('sans-serif', 11)
+            self.bold_font = ('sans-serif', 11, 'bold')
+            self.large_font = ('sans-serif', 13, 'bold')
+            self.title_font = ('sans-serif', 20, 'bold')
+
+        bg_color = "#ffffff"
+        fg_color = "#111111"
+        btn_bg = "#f5f5f5"
+        btn_active = "#e5e5e5"
+
+        self.style.configure('.', font=self.base_font, background=bg_color, foreground=fg_color)
+        self.style.configure('TFrame', background=bg_color)
+        self.style.configure('TLabel', background=bg_color, foreground=fg_color)
+        self.style.configure('TRadiobutton', background=bg_color, foreground=fg_color)
+        self.style.configure('TLabelframe', background=bg_color, padding=20, borderwidth=0)
+        self.style.configure('TLabelframe.Label', background=bg_color, font=self.bold_font, foreground=fg_color)
+        self.style.configure('TSeparator', background="#eeeeee")
+        
+        self.style.configure('TButton', padding=10, font=self.base_font, background=btn_bg, borderwidth=0)
+        self.style.map('TButton', background=[('active', btn_active)])
+        
+        # Primary Call to Action Button Style
+        self.style.configure(
+            'Action.TButton', 
+            font=self.large_font, 
+            padding=14,
+            background=fg_color,
+            foreground=bg_color,
+            borderwidth=0
+        )
+        self.style.map('Action.TButton', background=[('active', '#333333'), ('disabled', '#cccccc')])
+
+    def _setup_ui(self):
+        # 전체 뼈대 패딩 충분하게 확보
+        main_frame = ttk.Frame(self.root, padding="30 24 30 24")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # 1. 헤더 (타이틀) 영역
+        header_frame = ttk.Frame(main_frame)
+        header_frame.pack(fill=tk.X, pady=(0, 20))
+        
+        ttk.Label(
+            header_frame, 
+            text="로젠 발송 데이터 추출", 
+            font=self.title_font,
+            foreground="#111111"
+        ).pack(anchor=tk.W)
+        ttk.Label(
+            header_frame, 
+            text="네이버 커머스 주문을 조회하여 로젠송장 양식에 맞춘 엑셀을 생성합니다.", 
+            foreground="#737373"
+        ).pack(anchor=tk.W, pady=(4, 0))
+
+        # 2. 조회 설정 영역 (LabelFrame을 카테고리화)
+        settings_group = ttk.LabelFrame(main_frame, text="추출 옵션 설정")
+        settings_group.pack(fill=tk.X, pady=(0, 20))
+
+        # grid 레이아웃을 사용해 폼 정렬
+        settings_group.columnconfigure(1, weight=1)
+        
+        # 2-1. 기간 모드 선택
+        row = 0
+        ttk.Label(settings_group, text="조회 기준", font=self.bold_font).grid(row=row, column=0, sticky=tk.NW, pady=(0, 10), padx=(0, 20))
+        
+        radio_frame = ttk.Frame(settings_group)
+        radio_frame.grid(row=row, column=1, sticky="w", pady=(0, 10))
+        
+        ttk.Radiobutton(
+            radio_frame, text="최근 시간 기준", variable=self.period_mode, value="hours", command=self._on_period_mode_change
+        ).pack(side=tk.LEFT, padx=(0, 16))
+        
+        ttk.Radiobutton(
+            radio_frame, text="특정 일자 기간", variable=self.period_mode, value="range", command=self._on_period_mode_change
+        ).pack(side=tk.LEFT)
+
+        # 2-2. 동적 상세 조건 폼
+        row += 1
+        self.dynamic_input_frame = ttk.Frame(settings_group)
+        self.dynamic_input_frame.grid(row=row, column=1, sticky="w", pady=(0, 16))
+        
+        # Hours Form
+        self.hours_form = ttk.Frame(self.dynamic_input_frame)
+        spin = ttk.Spinbox(self.hours_form, from_=1, to=168, width=5, textvariable=self.hours_spin_var)
+        spin.pack(side=tk.LEFT)
+        ttk.Label(self.hours_form, text="시간 전부터 현재까지", foreground="#737373").pack(side=tk.LEFT, padx=(8, 0))
+
+        # Range Form
+        self.range_form = ttk.Frame(self.dynamic_input_frame)
+        ttk.Entry(self.range_form, width=12, textvariable=self.from_var).pack(side=tk.LEFT)
+        ttk.Label(self.range_form, text="~").pack(side=tk.LEFT, padx=6)
+        ttk.Entry(self.range_form, width=12, textvariable=self.to_var).pack(side=tk.LEFT)
+
+        # 2-3. 제외 필터
+        row += 2
+        ttk.Separator(settings_group, orient='horizontal').grid(row=row, column=0, columnspan=2, sticky="we", pady=(4, 14))
+        
+        row += 1
+        ttk.Label(settings_group, text="단어 필터링", font=self.bold_font).grid(row=row, column=0, sticky=tk.W, pady=(0, 8), padx=(0, 20))
+        ttk.Entry(settings_group, textvariable=self.keyword_var, width=40).grid(row=row, column=1, sticky="w", pady=(0, 8))
+        
+        row += 1
+        ttk.Label(settings_group, text="").grid(row=row, column=0)
+        ttk.Label(
+            settings_group, 
+            text="입력한 단어가 상품명에 포함되면 제외합니다 (쉼표 구분)", 
+            foreground="#737373"
+        ).grid(row=row, column=1, sticky="w", pady=(0, 4))
+        
+        # 초기 모드 반영
+        self._on_period_mode_change()
+
+        # 3. 액션 & 진행 영역 통합 프레임
+        action_frame = ttk.Frame(main_frame)
+        action_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.run_btn = ttk.Button(
+            action_frame, 
+            text="엑셀 파일 생성하기", 
+            style="Action.TButton", 
+            command=self._do_generate,
+            cursor="hand2" if platform.system() != 'Darwin' else "" 
+        )
+        self.run_btn.pack(fill=tk.X, pady=(10, 20), ipady=8)
+
+        # 4. 하단 상태 표시줄
+        status_container = ttk.Frame(main_frame)
+        status_container.pack(fill=tk.X, side=tk.BOTTOM)
+        
+        self.status_label = ttk.Label(
+            status_container, 
+            textvariable=self.status_var, 
+            wraplength=480, 
+            justify=tk.LEFT,
+            foreground="#2563eb"
+        )
+        self.status_label.pack(side=tk.LEFT, anchor=tk.W)
+
+        self.open_folder_btn = ttk.Button(
+            status_container, text="저장 폴더 보기", command=self._open_save_folder
+        )
+        self.open_folder_btn.pack(side=tk.RIGHT)
+
+    def _center_window(self):
+        self.root.update_idletasks()
+        w = max(self.root.winfo_reqwidth(), 560)
+        h = max(self.root.winfo_reqheight(), 520)
+        x = (self.root.winfo_screenwidth() // 2) - (w // 2)
+        y = (self.root.winfo_screenheight() // 2) - (h // 2)
+        self.root.geometry(f"{w}x{h}+{x}+{y}")
+
+    def _on_period_mode_change(self):
+        if self.period_mode.get() == "hours":
+            self.range_form.pack_forget()
+            self.hours_form.pack(fill=tk.X)
+        else:
+            self.hours_form.pack_forget()
+            self.range_form.pack(fill=tk.X)
+
+    def _open_save_folder(self):
+        try:
+            if not os.path.isdir(self.app_dir):
+                messagebox.showerror("폴더 없음", f"저장 폴더를 찾을 수 없습니다.\n\n{self.app_dir}")
+                return
+                
             if platform.system() == 'Windows':
-                os.startfile(app_dir)
+                os.startfile(self.app_dir)
             elif platform.system() == 'Darwin':
-                subprocess.Popen(['open', app_dir])
+                import subprocess
+                subprocess.Popen(['open', self.app_dir])
             else:
-                subprocess.Popen(['xdg-open', app_dir])
+                import subprocess
+                subprocess.Popen(['xdg-open', self.app_dir])
         except Exception as e:
-            messagebox.showerror("폴더 열기 오류", f"저장 폴더를 열 수 없습니다.\n\n{app_dir}\n\n{e}")
+            messagebox.showerror("폴더 열기 오류", f"폴더를 열 수 없습니다.\n\n{e}")
 
-    open_folder_btn = ttk.Button(main, text="저장 폴더 열기", command=open_save_folder)
-    open_folder_btn.pack(anchor=tk.W, pady=(6, 0))
-
-    def do_generate():
+    def _get_api_parameters(self) -> tuple[Optional[str], Optional[str], Optional[int]]:
         from_iso = None
         to_iso = None
         last_hours = None
 
-        if period_mode.get() == "hours":
+        if self.period_mode.get() == "hours":
             try:
-                last_hours = int(hours_spin_var.get().strip())
+                last_hours = int(self.hours_spin_var.get().strip())
                 last_hours = max(1, min(168, last_hours))
             except ValueError:
-                messagebox.showerror("입력 오류", "시간에는 1~168 사이 숫자를 입력해 주세요.")
-                return
+                raise ValueError("시간(N)란에 올바른 숫자를 입력해 주세요 (1~168).")
         else:
             try:
-                from_str = from_var.get().strip()
-                to_str = to_var.get().strip()
+                from_str = self.from_var.get().strip()
+                to_str = self.to_var.get().strip()
                 if not from_str or not to_str:
-                    messagebox.showerror("입력 오류", "시작일과 종료일을 입력해 주세요. (예: 2024-03-01)")
-                    return
-                # API는 유효한 ISO-8601(시간대 포함)을 요구함. KST(+09:00) + 밀리초로 통일
+                    raise ValueError("시작일과 종료일을 입력해 주세요. (예: 2024-03-01)")
+                
                 kst = timezone(timedelta(hours=9))
                 start_dt = datetime.strptime(from_str, "%Y-%m-%d").replace(tzinfo=kst)
                 end_dt = datetime.strptime(to_str, "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999000, tzinfo=kst)
+                
                 from_iso = start_dt.isoformat(timespec="milliseconds")
                 to_iso = end_dt.isoformat(timespec="milliseconds")
-                # 날짜 유효성 (이미 strptime으로 검증됨)
             except ValueError as e:
-                messagebox.showerror("입력 오류", "날짜 형식이 올바르지 않습니다. YYYY-MM-DD (예: 2024-03-01)")
-                return
+                if "입력해 주세요" in str(e):
+                    raise
+                raise ValueError("날짜 형식이 올바르지 않습니다. YYYY-MM-DD (예: 2024-03-01)")
+                
+        return from_iso, to_iso, last_hours
 
-        # 제외 키워드 파싱 (쉼표로 구분)
-        raw_keywords = keyword_var.get()
+    def _do_generate(self):
+        try:
+            from_iso, to_iso, last_hours = self._get_api_parameters()
+        except ValueError as e:
+            self.status_label.configure(foreground="#d35400") # 오렌지색 에러 표기
+            self.status_var.set(f"입력 확인 필요: {str(e)}")
+            messagebox.showwarning("입력 확인 필요", str(e))
+            return
+
+        raw_keywords = self.keyword_var.get()
         exclude_keywords = [k.strip() for k in raw_keywords.split(",") if k.strip()]
 
         def work():
@@ -217,41 +342,45 @@ def run_gui() -> None:
             )
 
         def on_start():
-            run_btn.state(["disabled"])
-            status_var.set("주문 조회 및 엑셀 생성 중…")
+            self.run_btn.state(["disabled"])
+            self.run_btn.config(text="데이터 조회 및 엑셀 생성 중...")
+            self.status_label.configure(foreground="#2563eb")
+            self.status_var.set("API에서 주문 데이터를 가져와 변환 작업을 수행하고 있습니다.")
 
         def on_done():
-            run_btn.state(["!disabled"])
+            self.run_btn.state(["!disabled"])
+            self.run_btn.config(text="엑셀 파일 생성하기")
 
         def on_success(path: str):
             abspath = os.path.abspath(path)
-            # 상태 영역은 짧게 표시하고, 전체 경로는 알림창으로 보여준다.
-            status_var.set(f"완료: {os.path.basename(abspath)}\n엑셀 파일이 생성되었습니다. [저장 폴더 열기] 버튼으로 폴더를 확인하세요.")
-            messagebox.showinfo("완료", f"엑셀 파일이 생성되었습니다.\n\n{abspath}")
+            self.status_label.configure(foreground="#059669")
+            self.status_var.set(f"완료: {os.path.basename(abspath)} 생성됨")
+            messagebox.showinfo("완료", f"엑셀 파일 생성이 완료되었습니다.\n\n저장 경로:\n{abspath}")
 
         def on_error(exc: Exception):
             if isinstance(exc, NaverAPIError):
-                msg = f"API 오류: {exc}"
+                msg = f"API 연동 오류: {exc}"
             elif isinstance(exc, DataTransformError):
-                msg = f"데이터 변환 오류: {exc}"
+                msg = f"양식 변환 중 오류 발생: {exc}"
             elif isinstance(exc, ExcelGenerationError):
-                msg = f"엑셀 생성 오류: {exc}"
+                msg = f"엑셀 생성 실패: {exc}"
             elif isinstance(exc, ValueError):
                 msg = f"설정 오류: {exc}"
             else:
-                msg = str(exc) or type(exc).__name__
-            status_var.set(f"오류: {msg}")
-            messagebox.showerror("오류", msg)
+                msg = f"시스템 알 수 없는 오류: {str(exc) or type(exc).__name__}"
+                
+            self.status_label.configure(foreground="#dc2626")
+            self.status_var.set(f"오류: {msg}")
+            messagebox.showerror("오류 발생", msg)
 
-        _run_in_background(root, work, on_start, on_done, on_success, on_error)
+        BackgroundWorker.run(
+            self.root, work, on_start, on_done, on_success, on_error
+        )
 
-    run_btn.configure(command=do_generate)
+    def run(self):
+        self.root.mainloop()
 
-    # 창 중앙 배치
-    root.update_idletasks()
-    w, h = 480, 460
-    x = (root.winfo_screenwidth() // 2) - (w // 2)
-    y = (root.winfo_screenheight() // 2) - (h // 2)
-    root.geometry(f"{w}x{h}+{x}+{y}")
 
-    root.mainloop()
+def run_gui() -> None:
+    app = LogenExcelApp()
+    app.run()

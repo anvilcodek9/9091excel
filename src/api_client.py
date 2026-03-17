@@ -36,6 +36,7 @@ class NaverCommerceClient:
         self.max_retries = 3
         self.initial_delay = 1
         self.backoff_multiplier = 2
+        self.api_call_delay = 0.5  # API 호출 빈도 제한 방지를 위한 대기 시간 (초)
 
     @staticmethod
     def _extract_raw_list(data: Any) -> List[Dict[str, Any]]:
@@ -142,6 +143,10 @@ class NaverCommerceClient:
             # 청크 단위로 실패해도 전체 실패로 중단하지 않고 가능한 데이터만 사용
             _ = last_error
 
+            # 다수 API 호출로 인한 차단(Rate Limit) 방지를 위한 짧은 대기
+            if i + chunk_size < len(unique_ids):
+                time.sleep(self.api_call_delay)
+
         return detail_map
     
     def fetch_orders(
@@ -218,6 +223,10 @@ class NaverCommerceClient:
                         all_orders.extend(partial)
                         # 다음 구간은 1ms 뒤부터 시작하여 중복 최소화
                         current_start = current_end + epsilon
+
+                        # 연속 호출 방지를 위한 대기
+                        if current_start < end_dt:
+                            time.sleep(self.api_call_delay)
 
                     return all_orders
 
