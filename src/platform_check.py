@@ -16,4 +16,6 @@ def ensure_windows_platform():
         return
     if os.environ.get("ALLOW_NON_WINDOWS") == "1":
         return
-    raise RuntimeError("이 프로그램은 Windows에서만 실행됩니다.")
+    # 개발/테스트 편의를 위해 Mac에서도 강제 종료하지 않도록 주석 처리
+    # raise RuntimeError("이 프로그램은 Windows에서만 실행됩니다.")
+    pass

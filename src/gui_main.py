@@ -134,6 +134,15 @@ def run_gui() -> None:
     save_path_var = tk.StringVar(value=app_dir)
     ttk.Label(save_frame, textvariable=save_path_var, foreground="gray").pack(side=tk.LEFT, padx=(4, 0))
 
+    # ---- 제외 키워드 ----
+    keyword_frame = ttk.Frame(main)
+    keyword_frame.pack(fill=tk.X, pady=section_pad)
+    ttk.Label(keyword_frame, text="제외할 키워드 (쉼표 구분):").pack(side=tk.LEFT)
+    keyword_var = tk.StringVar(value="")
+    keyword_entry = ttk.Entry(keyword_frame, textvariable=keyword_var, width=30)
+    keyword_entry.pack(side=tk.LEFT, padx=(4, 0))
+    ttk.Label(keyword_frame, text="(예: 특가, 무료배송)").pack(side=tk.LEFT, padx=(4, 0))
+
     # ---- 실행 버튼 ----
     run_btn = ttk.Button(main, text="엑셀 생성", command=None)
     run_btn.pack(pady=(8, 0))
@@ -149,8 +158,16 @@ def run_gui() -> None:
             if not os.path.isdir(app_dir):
                 messagebox.showerror("폴더 없음", f"저장 폴더를 찾을 수 없습니다.\n\n{app_dir}")
                 return
-            os.startfile(app_dir)
-        except OSError as e:
+            import platform
+            import subprocess
+            
+            if platform.system() == 'Windows':
+                os.startfile(app_dir)
+            elif platform.system() == 'Darwin':
+                subprocess.Popen(['open', app_dir])
+            else:
+                subprocess.Popen(['xdg-open', app_dir])
+        except Exception as e:
             messagebox.showerror("폴더 열기 오류", f"저장 폴더를 열 수 없습니다.\n\n{app_dir}\n\n{e}")
 
     open_folder_btn = ttk.Button(main, text="저장 폴더 열기", command=open_save_folder)
@@ -186,12 +203,17 @@ def run_gui() -> None:
                 messagebox.showerror("입력 오류", "날짜 형식이 올바르지 않습니다. YYYY-MM-DD (예: 2024-03-01)")
                 return
 
+        # 제외 키워드 파싱 (쉼표로 구분)
+        raw_keywords = keyword_var.get()
+        exclude_keywords = [k.strip() for k in raw_keywords.split(",") if k.strip()]
+
         def work():
             return generate_logen_shipping_file(
                 access_token=None,
                 from_iso=from_iso,
                 to_iso=to_iso,
                 last_hours=last_hours,
+                exclude_keywords=exclude_keywords,
             )
 
         def on_start():

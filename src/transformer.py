@@ -14,7 +14,10 @@ class OrderTransformer:
     """
     
     @staticmethod
-    def transform_to_logen_format(orders: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    def transform_to_logen_format(
+        orders: List[Dict[str, Any]], 
+        exclude_keywords: List[str] = None
+    ) -> List[Dict[str, str]]:
         """
         Transform Naver orders to Logen delivery format.
         
@@ -88,6 +91,13 @@ class OrderTransformer:
                 product_for_logen = f"{product_name} {option_text}".strip()
             else:
                 product_for_logen = product_name
+            
+            # 지정된 키워드 제거
+            if exclude_keywords:
+                for keyword in exclude_keywords:
+                    product_for_logen = product_for_logen.replace(keyword, "")
+                # 연속된 띄어쓰기를 단일 띄어쓰기로 정리하고 좌우 공백 제거
+                product_for_logen = " ".join(product_for_logen.split())
 
             # 배송메시지: 옵션정보에서 마지막 값(대개 날짜) + 기존 배송메시지
             original_memo = (order.get('deliveryMemo') or '').strip()

@@ -36,7 +36,7 @@ class TestGenerateLogenShippingFile:
             # Verify
             mock_client_class.assert_called_once_with('test_token')
             mock_client.fetch_orders.assert_called_once()
-            mock_transform.assert_called_once_with([{'order_id': '123'}])
+            mock_transform.assert_called_once_with([{'order_id': '123'}], None)
             mock_excel.assert_called_once()
             assert result == '로젠발송양식_20240115.xlsx'
     
@@ -71,6 +71,7 @@ class TestGenerateLogenShippingFile:
              patch('src.main.OrderTransformer.transform_to_logen_format') as mock_transform, \
              patch('src.main.LogenExcelGenerator.generate_excel') as mock_excel, \
              patch('src.main.generate_logen_filename') as mock_filename, \
+             patch('src.auth._validate_client_secret', return_value='test_client_secret'), \
              patch('src.auth.get_access_token', return_value='auto_issued_token'), \
              patch.dict(os.environ, {
                  'NAVER_CLIENT_ID': 'test_client_id',
@@ -161,7 +162,7 @@ class TestGenerateLogenShippingFile:
             mock_client.fetch_orders.side_effect = fetch_orders_side_effect
             mock_client_class.return_value = mock_client
             
-            def transform_side_effect(orders):
+            def transform_side_effect(orders, exclude_keywords=None):
                 call_order.append('transform')
                 return [{'receiver_name': 'Test'}]
             mock_transform.side_effect = transform_side_effect

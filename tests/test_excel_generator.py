@@ -31,11 +31,14 @@ class TestLogenExcelGenerator:
         try:
             result_path = LogenExcelGenerator.generate_excel(data, output_path)
             
-            assert result_path == output_path
-            assert os.path.exists(output_path)
+            # Since the temp file already exists, openpyxl saves it with a new name appended with timestamp
+            assert result_path != output_path
+            assert os.path.exists(result_path)
         finally:
             if os.path.exists(output_path):
                 os.remove(output_path)
+            if 'result_path' in locals() and os.path.exists(result_path):
+                os.remove(result_path)
     
     def test_generate_excel_header_row(self):
         """Test that the Excel file has the correct header row (로젠양식 A~O 15열)."""
@@ -45,9 +48,9 @@ class TestLogenExcelGenerator:
             output_path = tmp.name
         
         try:
-            LogenExcelGenerator.generate_excel(data, output_path)
+            result_path = LogenExcelGenerator.generate_excel(data, output_path)
             
-            wb = load_workbook(output_path)
+            wb = load_workbook(result_path)
             ws = wb.active
             
             expected_headers = [
@@ -61,6 +64,8 @@ class TestLogenExcelGenerator:
         finally:
             if os.path.exists(output_path):
                 os.remove(output_path)
+            if 'result_path' in locals() and os.path.exists(result_path):
+                os.remove(result_path)
     
     def test_generate_excel_single_order(self):
         """Test that a single order is correctly written to Excel (로젠양식)."""
@@ -79,9 +84,9 @@ class TestLogenExcelGenerator:
             output_path = tmp.name
         
         try:
-            LogenExcelGenerator.generate_excel(data, output_path)
+            result_path = LogenExcelGenerator.generate_excel(data, output_path)
             
-            wb = load_workbook(output_path)
+            wb = load_workbook(result_path)
             ws = wb.active
             
             # Check row count (1 header + 1 data row)
@@ -97,6 +102,8 @@ class TestLogenExcelGenerator:
         finally:
             if os.path.exists(output_path):
                 os.remove(output_path)
+            if 'result_path' in locals() and os.path.exists(result_path):
+                os.remove(result_path)
     
     def test_generate_excel_multiple_orders(self):
         """Test that multiple orders are correctly written to Excel (로젠양식)."""
@@ -131,9 +138,9 @@ class TestLogenExcelGenerator:
             output_path = tmp.name
         
         try:
-            LogenExcelGenerator.generate_excel(data, output_path)
+            result_path = LogenExcelGenerator.generate_excel(data, output_path)
             
-            wb = load_workbook(output_path)
+            wb = load_workbook(result_path)
             ws = wb.active
             
             # Check row count (1 header + 3 data rows)
@@ -153,6 +160,8 @@ class TestLogenExcelGenerator:
         finally:
             if os.path.exists(output_path):
                 os.remove(output_path)
+            if 'result_path' in locals() and os.path.exists(result_path):
+                os.remove(result_path)
     
     def test_generate_excel_empty_data(self):
         """Test that empty data list creates only header row."""
@@ -162,9 +171,9 @@ class TestLogenExcelGenerator:
             output_path = tmp.name
         
         try:
-            LogenExcelGenerator.generate_excel(data, output_path)
+            result_path = LogenExcelGenerator.generate_excel(data, output_path)
             
-            wb = load_workbook(output_path)
+            wb = load_workbook(result_path)
             ws = wb.active
             
             # Should have only header row
@@ -172,6 +181,8 @@ class TestLogenExcelGenerator:
         finally:
             if os.path.exists(output_path):
                 os.remove(output_path)
+            if 'result_path' in locals() and os.path.exists(result_path):
+                os.remove(result_path)
     
     def test_generate_excel_empty_delivery_memo(self):
         """Test that empty delivery_memo is handled correctly."""
@@ -190,9 +201,9 @@ class TestLogenExcelGenerator:
             output_path = tmp.name
         
         try:
-            LogenExcelGenerator.generate_excel(data, output_path)
+            result_path = LogenExcelGenerator.generate_excel(data, output_path)
             
-            wb = load_workbook(output_path)
+            wb = load_workbook(result_path)
             ws = wb.active
             
             # Check that delivery_memo (L열=12) is None or empty
@@ -200,6 +211,8 @@ class TestLogenExcelGenerator:
         finally:
             if os.path.exists(output_path):
                 os.remove(output_path)
+            if 'result_path' in locals() and os.path.exists(result_path):
+                os.remove(result_path)
     
     def test_generate_excel_missing_fields(self):
         """Test that missing fields are handled with empty strings (full_address fallback)."""
@@ -215,9 +228,9 @@ class TestLogenExcelGenerator:
             output_path = tmp.name
         
         try:
-            LogenExcelGenerator.generate_excel(data, output_path)
+            result_path = LogenExcelGenerator.generate_excel(data, output_path)
             
-            wb = load_workbook(output_path)
+            wb = load_workbook(result_path)
             ws = wb.active
             
             # full_address fallback: address1 gets full, address2 empty
@@ -229,6 +242,8 @@ class TestLogenExcelGenerator:
         finally:
             if os.path.exists(output_path):
                 os.remove(output_path)
+            if 'result_path' in locals() and os.path.exists(result_path):
+                os.remove(result_path)
     
     def test_generate_excel_invalid_path_raises_error(self):
         """Test that invalid file path raises ExcelGenerationError."""
@@ -269,9 +284,9 @@ class TestLogenExcelGenerator:
             output_path = tmp.name
         
         try:
-            LogenExcelGenerator.generate_excel(data, output_path)
+            result_path = LogenExcelGenerator.generate_excel(data, output_path)
             
-            wb = load_workbook(output_path)
+            wb = load_workbook(result_path)
             ws = wb.active
             
             # Check column order (A~O 15열)
@@ -283,3 +298,5 @@ class TestLogenExcelGenerator:
         finally:
             if os.path.exists(output_path):
                 os.remove(output_path)
+            if 'result_path' in locals() and os.path.exists(result_path):
+                os.remove(result_path)

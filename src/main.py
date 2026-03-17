@@ -17,6 +17,7 @@ def generate_logen_shipping_file(
     from_iso: Optional[str] = None,
     to_iso: Optional[str] = None,
     last_hours: Optional[int] = None,
+    exclude_keywords: Optional[list] = None,
 ) -> str:
     """
     Fetches orders from Naver Smart Store and generates Logen shipping Excel file.
@@ -83,7 +84,7 @@ def generate_logen_shipping_file(
     print(f"주문 조회: {len(orders)}건")
 
     # Call OrderTransformer.transform_to_logen_format to transform data
-    transformed_orders = OrderTransformer.transform_to_logen_format(orders)
+    transformed_orders = OrderTransformer.transform_to_logen_format(orders, exclude_keywords)
     
     # Generate output filename: 지정한 기간이 있으면 파일명에 반영
     filename = generate_logen_filename(from_iso=from_iso, to_iso=to_iso)
