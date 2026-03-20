@@ -1,5 +1,6 @@
 """Order data transformation module for Naver-Logen integration."""
 
+import re
 from typing import List, Dict, Any
 from src.exceptions import DataTransformError
 
@@ -13,6 +14,37 @@ class OrderTransformer:
     field validation, mapping, and address concatenation.
     """
     
+    @staticmethod
+    def _extract_arrival_text(option_text: str) -> str:
+        """
+        Extract arrival schedule text that follows "도착일:" marker.
+
+        - Accepts variations like "도 착 일:", "도착 일:"
+        - Stops before next option token such as "/ 옵션명:..."
+        """
+        if not option_text:
+            return ""
+
+        matched = re.search(
+            r"도\s*착\s*일\s*[:：]\s*(.+?)(?=\s*/\s*[^/]+[:：]|$)",
+            option_text,
+        )
+        if not matched:
+            return ""
+        return matched.group(1).strip()
+
+    @staticmethod
+    def _build_delivery_memo(option_text: str, original_memo: str) -> str:
+        """
+        Build delivery memo from arrival text in option info and original memo.
+        """
+        arrival_text = OrderTransformer._extract_arrival_text(option_text)
+        if arrival_text and original_memo:
+            return f"{arrival_text} {original_memo}"
+        if arrival_text:
+            return arrival_text
+        return original_memo
+
     @staticmethod
     def transform_to_logen_format(
         orders: List[Dict[str, Any]], 
@@ -43,7 +75,7 @@ class OrderTransformer:
                 - full_address: Combined address (baseAddress + " " + detailedAddress)
                 - receiver_tel: Recipient phone number
                 - product_name: Product name + option text (상품명 + 옵션정보)
-                - delivery_memo: "<옵션 마지막값> + 기존 배송메세지" 형식
+                - delivery_memo: "도착일: 이후 텍스트 + 기존 배송메세지" 형식
                 - sender_name: Buyer name (보내는 분)
                 - sender_tel: Buyer phone (보내는 분 연락처)
                 
@@ -99,21 +131,12 @@ class OrderTransformer:
                 # 연속된 띄어쓰기를 단일 띄어쓰기로 정리하고 좌우 공백 제거
                 product_for_logen = " ".join(product_for_logen.split())
 
-            # 배송메시지: 옵션정보에서 마지막 값(대개 날짜) + 기존 배송메시지
+            # 배송메시지: 옵션정보에서 "도착일:" 이후 텍스트 + 기존 배송메시지
             original_memo = (order.get('deliveryMemo') or '').strip()
-            option_last = ''
-            if option_text:
-                # "/" 기준으로 마지막 토큰을 날짜로 간주
-                parts = [p.strip() for p in option_text.split('/') if p.strip()]
-                if parts:
-                    option_last = parts[-1]
-
-            if option_last and original_memo:
-                delivery_memo_for_logen = f"{option_last} {original_memo}"
-            elif option_last:
-                delivery_memo_for_logen = option_last
-            else:
-                delivery_memo_for_logen = original_memo
+            delivery_memo_for_logen = OrderTransformer._build_delivery_memo(
+                option_text=option_text,
+                original_memo=original_memo,
+            )
 
             # Transform to Logen format (로젠양식: 주소1, 주소2 분리)
             transformed_order = {

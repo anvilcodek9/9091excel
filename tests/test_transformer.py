@@ -194,3 +194,39 @@ def test_transform_address_concatenation_with_space():
     # Verify exactly one space between addresses
     assert result[0]['full_address'] == '대구시 중구 505동'
     assert '  ' not in result[0]['full_address']  # No double spaces
+
+
+def test_transform_delivery_memo_extracts_arrival_text_from_option():
+    """도착일 패턴이 있을 때만 옵션에서 배송일정을 배송메모로 추가한다."""
+    orders = [{
+        'order_id': 'ORDER404',
+        'receiverName': '홍길동',
+        'baseAddress': '서울시 송파구',
+        'detailedAddress': '10동 1001호',
+        'receiverTel1': '010-1111-2222',
+        'productName': '사과',
+        'optionText': '색상:레드 / 도 착 일: 3/25(월) 도착 예정 / 수량:1개',
+        'deliveryMemo': '부재시 문앞'
+    }]
+
+    result = OrderTransformer.transform_to_logen_format(orders)
+
+    assert result[0]['delivery_memo'] == '3/25(월) 도착 예정 부재시 문앞'
+
+
+def test_transform_delivery_memo_ignores_non_arrival_last_option():
+    """마지막 옵션이 도착일이 아니면 기존 배송메모만 유지한다."""
+    orders = [{
+        'order_id': 'ORDER505',
+        'receiverName': '홍길동',
+        'baseAddress': '서울시 송파구',
+        'detailedAddress': '10동 1001호',
+        'receiverTel1': '010-1111-2222',
+        'productName': '사과',
+        'optionText': '색상:레드 / 잘못된정보 / 수량:1개',
+        'deliveryMemo': '문앞'
+    }]
+
+    result = OrderTransformer.transform_to_logen_format(orders)
+
+    assert result[0]['delivery_memo'] == '문앞'
