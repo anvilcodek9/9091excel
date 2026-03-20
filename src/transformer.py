@@ -39,10 +39,11 @@ class OrderTransformer:
         Build delivery memo from arrival text in option info and original memo.
         """
         arrival_text = OrderTransformer._extract_arrival_text(option_text)
-        if arrival_text and original_memo:
-            return f"{arrival_text} {original_memo}"
-        if arrival_text:
-            return arrival_text
+        arrival_with_key = f"도착일: {arrival_text}" if arrival_text else ""
+        if arrival_with_key and original_memo:
+            return f"{arrival_with_key} | {original_memo}"
+        if arrival_with_key:
+            return arrival_with_key
         return original_memo
 
     @staticmethod

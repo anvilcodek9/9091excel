@@ -211,7 +211,7 @@ def test_transform_delivery_memo_extracts_arrival_text_from_option():
 
     result = OrderTransformer.transform_to_logen_format(orders)
 
-    assert result[0]['delivery_memo'] == '3/25(월) 도착 예정 부재시 문앞'
+    assert result[0]['delivery_memo'] == '도착일: 3/25(월) 도착 예정 | 부재시 문앞'
 
 
 def test_transform_delivery_memo_ignores_non_arrival_last_option():
